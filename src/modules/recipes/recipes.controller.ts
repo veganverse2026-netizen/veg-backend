@@ -1,7 +1,7 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { requireObject, requireString } from "../../common/validation/validators.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireObject, requireString } from "../../shared/validation/validators.js";
 import { listSavedRecipes, saveRecipe } from "./recipes.service.js";
 
 export async function getSavedRecipes(req: AuthedRequest, res: Response) {

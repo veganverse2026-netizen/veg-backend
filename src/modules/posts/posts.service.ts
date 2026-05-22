@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { getIo } from "../../realtime/socketio.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { getIo } from "../../infrastructure/realtime/socket.js";
 
 export async function getFeed() {
   return await prisma.post.findMany({

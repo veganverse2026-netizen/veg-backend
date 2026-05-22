@@ -1,7 +1,7 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { requireEnum, requireObject } from "../../common/validation/validators.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireEnum, requireObject } from "../../shared/validation/validators.js";
 import { getRecipe, listRecipes, listWorkouts } from "./catalog.service.js";
 
 export async function getCatalogRecipes(_req: AuthedRequest, res: Response) {

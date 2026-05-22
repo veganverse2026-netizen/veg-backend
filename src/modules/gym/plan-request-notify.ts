@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 import { getOrCreateConversation, sendMessage } from "../dm/dm.service.js";
 
 export type PlanRequestDmResult =

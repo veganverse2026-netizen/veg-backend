@@ -1,6 +1,6 @@
 import type { PlanChangeStatus, UserRole } from "@prisma/client";
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../http/http-errors.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 
 export async function getAdminOverview() {
   const [users, posts, recipes, gymTrainers, pendingPlanRequests, members, trainers] = await Promise.all([

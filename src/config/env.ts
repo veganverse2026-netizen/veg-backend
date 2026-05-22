@@ -1,4 +1,4 @@
-import { HttpError } from "../common/errors/http-error.js";
+import { HttpError } from "../shared/errors/http-error.js";
 
 function requireEnv(key: string) {
   const v = process.env[key];

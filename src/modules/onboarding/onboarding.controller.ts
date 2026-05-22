@@ -1,8 +1,8 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { optionalString, requireEnum, requireInt, requireObject } from "../../common/validation/validators.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { optionalString, requireEnum, requireInt, requireObject } from "../../shared/validation/validators.js";
 import { completeOnboarding } from "./onboarding.service.js";
 
 export async function postOnboarding(req: AuthedRequest, res: Response) {

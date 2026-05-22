@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { jsonError, jsonOk } from "../../common/http/json.js";
-import { asyncHandler } from "../../common/http/async-handler.js";
+import { jsonError, jsonOk } from "../../shared/http/json-response.js";
+import { asyncHandler } from "../../shared/http/async-handler.js";
 import { getPostsFeed, postAcceptAnswer, postComment, postCreate, postLike, requireUserMiddleware } from "./posts.controller.js";
 
 export const postsRouter = Router();

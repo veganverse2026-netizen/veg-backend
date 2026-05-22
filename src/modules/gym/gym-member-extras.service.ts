@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../common/errors/http-error.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import { notifyTrainerMissedWorkout } from "./plan-request-notify.js";
 
 export async function listGymProgressPhotos(userId: string) {

@@ -2,8 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { apiRouter } from "./routes/index.js";
-import { jsonError } from "./common/http/json.js";
-import { HttpError } from "./common/errors/http-error.js";
+import { jsonError } from "./shared/http/json-response.js";
+import { HttpError } from "./shared/errors/http-error.js";
 
 export function createApp() {
   const app = express();
@@ -25,4 +25,3 @@ export function createApp() {
 
   return app;
 }
-

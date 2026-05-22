@@ -1,7 +1,7 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import {
   optionalString,
   requireEmail,
@@ -9,7 +9,7 @@ import {
   requireInt,
   requireObject,
   requireString
-} from "../../common/validation/validators.js";
+} from "../../shared/validation/validators.js";
 import { getUserById, searchUsers, updateUserProfile } from "./users.service.js";
 
 export async function getMe(req: AuthedRequest, res: Response) {

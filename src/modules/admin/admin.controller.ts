@@ -1,13 +1,13 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../middleware/auth.js";
-import { HttpError } from "../../http/http-errors.js";
-import { jsonOk } from "../../common/http/json.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { jsonOk } from "../../shared/http/json-response.js";
 import {
   optionalString,
   requireEnum,
   requireObject,
   requireString
-} from "../../common/validation/validators.js";
+} from "../../shared/validation/validators.js";
 import {
   createGymTrainerForAdmin,
   deleteGymTrainerForAdmin,

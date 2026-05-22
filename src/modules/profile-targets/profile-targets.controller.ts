@@ -1,7 +1,7 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { getProfileTargetsService, updateProfileTargetsService } from "../../services/profile-targets-service.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { getProfileTargetsService, updateProfileTargetsService } from "./profile-targets.service.js";
 
 export async function getProfileTargets(req: AuthedRequest, res: Response) {
   const data = await getProfileTargetsService(req.userId!);

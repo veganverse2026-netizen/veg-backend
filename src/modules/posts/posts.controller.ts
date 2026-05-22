@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
-import { jsonOk } from "../../common/http/json.js";
-import { requireUser, type AuthedRequest } from "../../common/auth/require-user.js";
-import { optionalString, requireEnum, requireObject, requireString } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
 import { addComment, createPost, getFeed, toggleLike, acceptAnswer } from "./posts.service.js";
 
 export async function getPostsFeed(_req: Request, res: Response) {
