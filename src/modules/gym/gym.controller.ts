@@ -1,9 +1,9 @@
 import type { Response } from "express";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { requireObject, optionalString, requireString } from "../../common/validation/validators.js";
-import { prisma } from "../../config/prisma.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { requireObject, optionalString, requireString } from "../../shared/validation/validators.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 import { listGymTrainers } from "./gym-trainers.service.js";
 import {
   createPlanChangeRequest,

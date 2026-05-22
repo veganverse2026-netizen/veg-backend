@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
-import { jsonOk } from "../../common/http/json.js";
-import { requireObject, requireString } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireObject, requireString } from "../../shared/validation/validators.js";
 import {
   credentialsAuthorize,
   forgotRequestOtp,

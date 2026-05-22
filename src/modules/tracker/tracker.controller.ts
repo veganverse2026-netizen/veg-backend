@@ -1,7 +1,7 @@
 import type { Response } from "express";
-import { jsonOk } from "../../common/http/json.js";
-import type { AuthedRequest } from "../../common/auth/require-user.js";
-import { optionalBoolean, optionalNumber, requireObject } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { optionalBoolean, optionalNumber, requireObject } from "../../shared/validation/validators.js";
 import { addTrackerEntry, listTrackers } from "./tracker.service.js";
 
 export async function getTracker(req: AuthedRequest, res: Response) {

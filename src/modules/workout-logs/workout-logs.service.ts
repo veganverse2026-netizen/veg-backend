@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 
 type Pr = { exercise: string; bestWeightKg: number; bestVolume: number; updatedAt: Date };
 

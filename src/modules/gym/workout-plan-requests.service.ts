@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../common/errors/http-error.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import { notifyTrainerPlanRequest } from "./plan-request-notify.js";
 
 function parseSessionsJson(raw: string) {

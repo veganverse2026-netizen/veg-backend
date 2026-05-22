@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import { compare, hash } from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
-import { prisma } from "../../config/prisma.js";
-import { signAccessToken } from "../../common/security/jwt.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { generateOtpCode, hashOtpCode, otpExpiry, safeEqualHash } from "../../utils/otp.js";
-import { sendOtpEmail } from "../../utils/email.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { signAccessToken } from "../../shared/utils/jwt.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { generateOtpCode, hashOtpCode, otpExpiry, safeEqualHash } from "../../shared/utils/otp.js";
+import { sendOtpEmail } from "../../infrastructure/mailer/mailer.js";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 

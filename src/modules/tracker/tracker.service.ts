@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 
 export async function listTrackers(userId: string) {
   return await prisma.tracker.findMany({

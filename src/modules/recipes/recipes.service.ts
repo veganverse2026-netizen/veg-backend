@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 
 export async function listSavedRecipes(userId: string) {
   return await prisma.savedRecipe.findMany({
