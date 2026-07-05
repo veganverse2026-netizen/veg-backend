@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
-import { jsonError, jsonOk } from "../../shared/http/json-response.js";
+import { optionalUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { jsonError } from "../../shared/http/json-response.js";
 import { getCatalogRecipeById, getCatalogRecipes, getCatalogWorkouts } from "./catalog.controller.js";
 
 export const catalogRouter = Router();
 
-catalogRouter.get("/recipes", requireUser, async (_req: AuthedRequest, res) => {
+// Public endpoints — auth optional for browsing
+catalogRouter.get("/recipes", optionalUser, async (_req: AuthedRequest, res) => {
   try {
     await getCatalogRecipes(_req, res);
     return;
@@ -14,7 +15,7 @@ catalogRouter.get("/recipes", requireUser, async (_req: AuthedRequest, res) => {
   }
 });
 
-catalogRouter.get("/recipes/:id", requireUser, async (req: AuthedRequest, res) => {
+catalogRouter.get("/recipes/:id", optionalUser, async (req: AuthedRequest, res) => {
   try {
     await getCatalogRecipeById(req, res);
     return;
@@ -23,7 +24,7 @@ catalogRouter.get("/recipes/:id", requireUser, async (req: AuthedRequest, res) =
   }
 });
 
-catalogRouter.get("/workouts", requireUser, async (req: AuthedRequest, res) => {
+catalogRouter.get("/workouts", optionalUser, async (req: AuthedRequest, res) => {
   try {
     await getCatalogWorkouts(req, res);
     return;

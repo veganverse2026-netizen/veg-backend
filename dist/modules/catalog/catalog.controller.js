@@ -1,5 +1,5 @@
-import { jsonOk } from "../../common/http/json.js";
-import { requireEnum, requireObject } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireEnum, requireObject } from "../../shared/validation/validators.js";
 import { getRecipe, listRecipes, listWorkouts } from "./catalog.service.js";
 export async function getCatalogRecipes(_req, res) {
     const recipes = await listRecipes();

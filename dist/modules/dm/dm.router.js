@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { asyncHandler } from "../../common/http/async-handler.js";
-import { requireUser } from "../../common/auth/require-user.js";
+import { asyncHandler } from "../../shared/http/async-handler.js";
+import { requireUser } from "../../shared/middleware/auth.middleware.js";
 import { deleteConversationById, deleteMessageById, getInbox, getMessages, postConversation, postMarkRead, postMessage } from "./dm.controller.js";
 export const dmRouter = Router();
 dmRouter.get("/conversations", requireUser, asyncHandler(getInbox));

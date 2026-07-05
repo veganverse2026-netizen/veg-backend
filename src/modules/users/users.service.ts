@@ -1,6 +1,28 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
+export async function getPublicUserById(id: string) {
+  return await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      image: true,
+      goal: true,
+      streakCount: true,
+      gymTrainer: {
+        select: {
+          id: true,
+          name: true,
+          title: true,
+          bio: true,
+          imageUrl: true
+        }
+      }
+    }
+  });
+}
+
 export async function getUserById(id: string) {
   return await prisma.user.findUnique({
     where: { id },
@@ -127,6 +149,27 @@ export async function updateUserProfile(
     if (err?.code === "P2002") throw new HttpError(400, "Email already in use");
     throw err;
   }
+}
+
+export async function getUserStats(userId: string) {
+  const [user, workoutCount, postsCount, likesReceived] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { streakCount: true, createdAt: true }
+    }),
+    prisma.workoutLog.count({ where: { userId } }),
+    prisma.post.count({ where: { userId } }),
+    prisma.postLike.count({ where: { post: { userId } } }),
+  ]);
+
+  if (!user) return null;
+
+  const msPerMonth = 1000 * 60 * 60 * 24 * 30;
+  const monthsVegan = Math.max(0, Math.floor(
+    (Date.now() - new Date(user.createdAt).getTime()) / msPerMonth
+  ));
+
+  return { workoutCount, postsCount, likesReceived, streakCount: user.streakCount, monthsVegan };
 }
 
 export async function searchUsers(searchText: string, limit = 10) {

@@ -2,12 +2,25 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { apiRouter } from "./routes/index.js";
-import { jsonError } from "./common/http/json.js";
-import { HttpError } from "./common/errors/http-error.js";
+import { jsonError } from "./shared/http/json-response.js";
+import { HttpError } from "./shared/errors/http-error.js";
+const ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    process.env.FRONTEND_URL,
+    process.env.ADMIN_URL,
+].filter(Boolean);
 export function createApp() {
     const app = express();
     app.use(helmet());
-    app.use(cors());
+    app.use(cors({
+        origin: (origin, cb) => {
+            if (!origin || ALLOWED_ORIGINS.includes(origin))
+                return cb(null, true);
+            return cb(new Error("Not allowed by CORS"));
+        },
+        credentials: true,
+    }));
     app.use(express.json({ limit: "1mb" }));
     app.get("/health", (_req, res) => res.json({ ok: true }));
     app.use("/api", apiRouter);

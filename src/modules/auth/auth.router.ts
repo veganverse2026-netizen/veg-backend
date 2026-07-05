@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { asyncHandler } from "../../shared/http/async-handler.js";
+import { loginLimiter, otpRequestLimiter } from "../../shared/middleware/rate-limit.middleware.js";
 import {
   getAuthHealth,
   postCredentialsAuthorize,
@@ -10,6 +11,8 @@ import {
   postLoginPassword,
   postLoginRequestOtp,
   postLoginVerifyOtp,
+  postLogout,
+  postRefreshToken,
   postSignupRequestOtp,
   postSignupVerifyOtp
 } from "./auth.controller.js";
@@ -25,23 +28,29 @@ authRouter.get("/auth/health", async (_req, res) => {
   }
 });
 
-authRouter.post("/auth/signup/request-otp", asyncHandler(postSignupRequestOtp));
+authRouter.post("/auth/signup/request-otp", otpRequestLimiter, asyncHandler(postSignupRequestOtp));
 
-authRouter.post("/auth/signup/verify-otp", asyncHandler(postSignupVerifyOtp));
+authRouter.post("/auth/signup/verify-otp", loginLimiter, asyncHandler(postSignupVerifyOtp));
 
-authRouter.post("/auth/login/request-otp", asyncHandler(postLoginRequestOtp));
+authRouter.post("/auth/login/request-otp", otpRequestLimiter, asyncHandler(postLoginRequestOtp));
 
-authRouter.post("/auth/login/verify-otp", asyncHandler(postLoginVerifyOtp));
+authRouter.post("/auth/login/verify-otp", loginLimiter, asyncHandler(postLoginVerifyOtp));
 
-authRouter.post("/auth/forgot/request-otp", asyncHandler(postForgotRequestOtp));
+authRouter.post("/auth/forgot/request-otp", otpRequestLimiter, asyncHandler(postForgotRequestOtp));
 
-authRouter.post("/auth/forgot/reset", asyncHandler(postForgotReset));
+authRouter.post("/auth/forgot/reset", loginLimiter, asyncHandler(postForgotReset));
 
 // Used by NextAuth CredentialsProvider:
-authRouter.post("/auth/credentials/authorize", asyncHandler(postCredentialsAuthorize));
+authRouter.post("/auth/credentials/authorize", loginLimiter, asyncHandler(postCredentialsAuthorize));
 
 // Email + password login (no OTP), returns JWT for REST API usage
-authRouter.post("/auth/login/password", asyncHandler(postLoginPassword));
+authRouter.post("/auth/login/password", loginLimiter, asyncHandler(postLoginPassword));
 
 // Google login: client sends ID token, backend verifies, returns JWT
 authRouter.post("/auth/login/google", asyncHandler(postLoginGoogle));
+
+// Token refresh: client sends current valid token, gets a fresh one back
+authRouter.post("/auth/refresh", asyncHandler(postRefreshToken));
+
+// Logout: client clears its own token; server just acknowledges
+authRouter.post("/auth/logout", asyncHandler(postLogout));

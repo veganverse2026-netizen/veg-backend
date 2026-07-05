@@ -1,10 +1,14 @@
-import { prisma } from "../../config/prisma.js";
-import { getIo } from "../../realtime/socketio.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { getIo } from "../../infrastructure/realtime/socket.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 export async function getFeed() {
     return await prisma.post.findMany({
         include: {
             user: { select: { id: true, name: true, goal: true } },
-            comments: { include: { user: { select: { name: true } } } },
+            comments: {
+                orderBy: { createdAt: "asc" },
+                include: { user: { select: { name: true } } },
+            },
             likes: true
         },
         orderBy: { createdAt: "desc" }
@@ -51,6 +55,17 @@ export async function toggleLike(userId, postId) {
     }
     catch { }
     return { liked: true };
+}
+export async function reportPost(input) {
+    const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { id: true } });
+    if (!post)
+        throw new HttpError(404, "Post not found");
+    const existing = await prisma.report.findFirst({ where: { reporterId: input.reporterId, postId: input.postId } });
+    if (existing)
+        throw new HttpError(409, "You already reported this post");
+    return prisma.report.create({
+        data: { reporterId: input.reporterId, postId: input.postId, reason: input.reason },
+    });
 }
 export async function acceptAnswer(userId, input) {
     const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { id: true, userId: true } });

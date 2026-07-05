@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../common/errors/http-error.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 export async function getUserById(id) {
     return await prisma.user.findUnique({
         where: { id },
@@ -38,11 +38,23 @@ export async function getUserById(id) {
     });
 }
 export async function updateUserProfile(userId, input) {
+    const existing = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { goal: true, goalLocked: true }
+    });
+    if (!existing)
+        throw new HttpError(404, "User not found");
+    if (input.goal !== undefined) {
+        if (existing.goalLocked && input.goal !== existing.goal) {
+            throw new HttpError(400, "Goal is permanent and cannot be changed");
+        }
+    }
     if (input.gymTrainerId !== undefined && input.gymTrainerId !== null) {
         const t = await prisma.gymTrainer.findUnique({ where: { id: input.gymTrainerId } });
         if (!t)
             throw new HttpError(400, "Invalid gym trainer");
     }
+    const lockGoal = input.goal !== undefined && (input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD");
     try {
         return await prisma.user.update({
             where: { id: userId },
@@ -50,7 +62,14 @@ export async function updateUserProfile(userId, input) {
                 name: input.name ?? undefined,
                 email: input.email ?? undefined,
                 image: input.image ?? undefined,
-                gymTrainerId: input.gymTrainerId === undefined ? undefined : input.gymTrainerId
+                gymTrainerId: input.gymTrainerId === undefined ? undefined : input.gymTrainerId,
+                heightCm: input.heightCm === undefined ? undefined : input.heightCm,
+                weightKg: input.weightKg === undefined ? undefined : input.weightKg,
+                age: input.age === undefined ? undefined : input.age,
+                gender: input.gender === undefined ? undefined : input.gender,
+                activityLevel: input.activityLevel === undefined ? undefined : input.activityLevel,
+                goal: input.goal === undefined ? undefined : input.goal,
+                ...(input.goal !== undefined ? { goalLocked: existing.goalLocked || Boolean(lockGoal) } : {})
             },
             select: {
                 id: true,

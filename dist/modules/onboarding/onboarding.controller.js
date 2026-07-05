@@ -1,6 +1,6 @@
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { optionalString, requireEnum, requireInt, requireObject } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { optionalString, requireEnum, requireInt, requireObject } from "../../shared/validation/validators.js";
 import { completeOnboarding } from "./onboarding.service.js";
 export async function postOnboarding(req, res) {
     const body = requireObject(req.body);

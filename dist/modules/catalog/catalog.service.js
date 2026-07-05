@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 export async function listRecipes() {
     return await prisma.recipe.findMany({ orderBy: { createdAt: "asc" } });
 }

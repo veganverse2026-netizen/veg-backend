@@ -1,9 +1,10 @@
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { requireObject, optionalString, requireString } from "../../common/validation/validators.js";
-import { prisma } from "../../config/prisma.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { requireObject, optionalString, requireString } from "../../shared/validation/validators.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 import { listGymTrainers } from "./gym-trainers.service.js";
 import { createPlanChangeRequest, getLatestPlanRequestForMember, listPendingForTrainer, reviewPlanRequest } from "./workout-plan-requests.service.js";
+import { createGymProgressPhoto, createMissedWorkoutReport, listGymProgressPhotos } from "./gym-member-extras.service.js";
 export async function getGymTrainers(_req, res) {
     const trainers = await listGymTrainers();
     return jsonOk(res, trainers);
@@ -50,4 +51,21 @@ export async function postReviewPlanRequest(req, res) {
     const trainerComment = optionalString(body, "trainerComment", { max: 2000 });
     const updated = await reviewPlanRequest(req.userId, requestId, action, trainerComment ?? null);
     return jsonOk(res, updated);
+}
+export async function getGymProgressPhotos(req, res) {
+    const rows = await listGymProgressPhotos(req.userId);
+    return jsonOk(res, rows);
+}
+export async function postGymProgressPhoto(req, res) {
+    const body = requireObject(req.body);
+    const imageUrl = requireString(body, "imageUrl", { trim: true, min: 10 });
+    const caption = optionalString(body, "caption", { max: 500 });
+    const created = await createGymProgressPhoto(req.userId, { imageUrl, caption: caption ?? null });
+    return jsonOk(res, created, 201);
+}
+export async function postMissedWorkout(req, res) {
+    const body = requireObject(req.body);
+    const reason = requireString(body, "reason", { trim: true, min: 8, max: 2000 });
+    const out = await createMissedWorkoutReport(req.userId, reason);
+    return jsonOk(res, out, 201);
 }

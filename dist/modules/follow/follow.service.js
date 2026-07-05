@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 export async function toggleFollow(followerId, followingId) {
     const userExists = await prisma.user.findUnique({ where: { id: followingId }, select: { id: true } });
     if (!userExists)

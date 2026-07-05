@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { requireUser, optionalUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { jsonError } from "../../shared/http/json-response.js";
 import {
   getGymTrainers,
@@ -14,7 +14,7 @@ import {
 
 export const gymRouter = Router();
 
-gymRouter.get("/gym/trainers", requireUser, async (req: AuthedRequest, res) => {
+gymRouter.get("/gym/trainers", optionalUser, async (req: AuthedRequest, res) => {
   try {
     await getGymTrainers(req, res);
     return;

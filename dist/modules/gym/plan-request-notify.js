@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 import { getOrCreateConversation, sendMessage } from "../dm/dm.service.js";
 /**
  * Opens/writes the member ↔ trainer DM thread when a gym plan change is submitted.
@@ -26,6 +26,37 @@ export async function notifyTrainerPlanRequest(memberUserId, requestId, gymTrain
 ${label} sent you their proposed gym week (ref · ${short}). Review it on your Trainer dashboard (/trainer), or reply here.
 
 Request ID: ${requestId}`;
+    await sendMessage(memberUserId, convo.id, content);
+    return { notified: true, conversationId: convo.id };
+}
+/**
+ * Notifies the assigned trainer (DM) when a member cannot train and sends a reason.
+ */
+export async function notifyTrainerMissedWorkout(memberUserId, reportId, gymTrainerCatalogId, reason) {
+    const [member, trainerRow] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: memberUserId },
+            select: { name: true, email: true }
+        }),
+        prisma.gymTrainer.findUnique({
+            where: { id: gymTrainerCatalogId },
+            select: { linkedUserId: true, name: true }
+        })
+    ]);
+    if (!trainerRow?.linkedUserId) {
+        return { notified: false, reason: "trainer_not_linked" };
+    }
+    const convo = await getOrCreateConversation(memberUserId, trainerRow.linkedUserId);
+    const label = member?.name?.trim() || member?.email?.trim() || "A member";
+    const short = reportId.slice(0, 8);
+    const content = `⚠️ Cannot work out — member update
+
+${label} logged that they will miss training today.
+
+Reason:
+${reason}
+
+(Ref · ${short})`;
     await sendMessage(memberUserId, convo.id, content);
     return { notified: true, conversationId: convo.id };
 }

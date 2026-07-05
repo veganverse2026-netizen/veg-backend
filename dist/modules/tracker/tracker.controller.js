@@ -1,5 +1,5 @@
-import { jsonOk } from "../../common/http/json.js";
-import { optionalBoolean, optionalNumber, requireObject } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { optionalBoolean, optionalNumber, requireObject } from "../../shared/validation/validators.js";
 import { addTrackerEntry, listTrackers } from "./tracker.service.js";
 export async function getTracker(req, res) {
     const trackers = await listTrackers(req.userId);

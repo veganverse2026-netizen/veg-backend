@@ -1,5 +1,5 @@
-import { jsonOk } from "../../common/http/json.js";
-import { requireObject, requireString } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireObject, requireString } from "../../shared/validation/validators.js";
 import { toggleFollow } from "./follow.service.js";
 export async function postFollow(req, res) {
     const body = requireObject(req.body);

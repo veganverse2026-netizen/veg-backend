@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../common/errors/http-error.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 function weekStartDate(date) {
     const d = new Date(date);
     const day = d.getDay();

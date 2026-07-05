@@ -10,7 +10,7 @@ import {
   requireObject,
   requireString
 } from "../../shared/validation/validators.js";
-import { getUserById, searchUsers, updateUserProfile } from "./users.service.js";
+import { getPublicUserById, getUserById, getUserStats, searchUsers, updateUserProfile } from "./users.service.js";
 
 export async function getMe(req: AuthedRequest, res: Response) {
   const user = await getUserById(req.userId!);
@@ -18,7 +18,9 @@ export async function getMe(req: AuthedRequest, res: Response) {
 }
 
 export async function getUser(req: AuthedRequest, res: Response) {
-  const user = await getUserById(req.params.id);
+  const isSelf = req.params.id === req.userId;
+  const user = isSelf ? await getUserById(req.params.id) : await getPublicUserById(req.params.id);
+  if (!user) throw new HttpError(404, "User not found");
   return jsonOk(res, user);
 }
 
@@ -86,6 +88,11 @@ export async function patchMe(req: AuthedRequest, res: Response) {
   });
 
   return jsonOk(res, updated);
+}
+
+export async function getMeStats(req: AuthedRequest, res: Response) {
+  const stats = await getUserStats(req.userId!);
+  return jsonOk(res, stats);
 }
 
 export async function getUsersSearch(req: AuthedRequest, res: Response) {

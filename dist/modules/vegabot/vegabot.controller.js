@@ -1,5 +1,5 @@
-import { jsonOk } from "../../common/http/json.js";
-import { requireEnum, requireObject, requireString } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
 import { generateOfflineReply } from "./vegabot.service.js";
 export async function postVegabot(req, res) {
     const body = requireObject(req.body);

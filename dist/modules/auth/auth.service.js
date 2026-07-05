@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import { compare, hash } from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
-import { prisma } from "../../config/prisma.js";
-import { signAccessToken } from "../../common/security/jwt.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { generateOtpCode, hashOtpCode, otpExpiry, safeEqualHash } from "../../utils/otp.js";
-import { sendOtpEmail } from "../../utils/email.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { signAccessToken, verifyAccessToken } from "../../shared/utils/jwt.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { generateOtpCode, hashOtpCode, otpExpiry, safeEqualHash } from "../../shared/utils/otp.js";
+import { sendOtpEmail } from "../../infrastructure/mailer/mailer.js";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 function hashProofToken(value) {
     return crypto.createHash("sha256").update(value).digest("hex");
@@ -178,11 +178,41 @@ export async function loginPassword(input) {
     const ok = await compare(input.password, user.passwordHash);
     if (!ok)
         throw new HttpError(401, "Invalid credentials");
-    const token = signAccessToken(user.id);
+    const token = signAccessToken(user.id, user.role);
     return {
         success: true,
         message: "Login successful",
         token,
+        user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            goal: user.goal,
+            onboardingDone: user.onboardingDone,
+            goalLocked: user.goalLocked,
+            role: user.role
+        }
+    };
+}
+export async function refreshToken(input) {
+    let payload;
+    try {
+        payload = verifyAccessToken(input.token);
+    }
+    catch {
+        throw new HttpError(401, "Invalid or expired token");
+    }
+    const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, email: true, name: true, image: true, goal: true, onboardingDone: true, goalLocked: true, role: true }
+    });
+    if (!user)
+        throw new HttpError(401, "User not found");
+    const newToken = signAccessToken(user.id, user.role);
+    return {
+        success: true,
+        token: newToken,
         user: {
             id: user.id,
             email: user.email,
@@ -215,7 +245,7 @@ export async function loginGoogle(input) {
                 emailVerified: new Date()
             }
         }));
-    const token = signAccessToken(user.id);
+    const token = signAccessToken(user.id, user.role);
     return {
         success: true,
         message: "Google login successful",

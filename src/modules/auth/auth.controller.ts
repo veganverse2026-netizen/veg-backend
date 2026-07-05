@@ -10,6 +10,7 @@ import {
   loginPassword,
   loginRequestOtp,
   loginVerifyOtp,
+  refreshToken,
   signupRequestOtp,
   signupVerifyOtp
 } from "./auth.service.js";
@@ -89,5 +90,16 @@ export async function postLoginGoogle(req: Request, res: Response) {
   const idToken = requireString(body, "idToken", { trim: true, min: 20 });
   const result = await loginGoogle({ idToken });
   return jsonOk(res, result);
+}
+
+export async function postRefreshToken(req: Request, res: Response) {
+  const body = requireObject(req.body);
+  const token = requireString(body, "token", { trim: true, min: 10 });
+  const result = await refreshToken({ token });
+  return jsonOk(res, result);
+}
+
+export async function postLogout(_req: Request, res: Response) {
+  return jsonOk(res, { success: true, message: "Logged out" });
 }
 

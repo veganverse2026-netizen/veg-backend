@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { asyncHandler } from "../../shared/http/async-handler.js";
-import { getPostsFeed, postAcceptAnswer, postComment, postCreate, postLike, requireUserMiddleware } from "./posts.controller.js";
+import { getPostsFeed, postAcceptAnswer, postComment, postCommentLike, postCreate, postLike, postReport, requireUserMiddleware } from "./posts.controller.js";
 
 export const postsRouter = Router();
 
@@ -20,5 +20,9 @@ postsRouter.post("/posts/comment", requireUserMiddleware, asyncHandler(postComme
 
 postsRouter.post("/posts/like", requireUserMiddleware, asyncHandler(postLike));
 
+postsRouter.post("/posts/comment/like", requireUserMiddleware, asyncHandler(postCommentLike));
+
 postsRouter.post("/posts/accept-answer", requireUserMiddleware, asyncHandler(postAcceptAnswer));
+
+postsRouter.post("/posts/:id/report", requireUserMiddleware, asyncHandler(postReport));
 

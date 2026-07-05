@@ -1,6 +1,6 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { getIo } from "../../realtime/socketio.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { getIo } from "../../infrastructure/realtime/socket.js";
 const prismaAny = prisma;
 function orderedPair(a, b) {
     return a < b ? { userAId: a, userBId: b } : { userAId: b, userBId: a };

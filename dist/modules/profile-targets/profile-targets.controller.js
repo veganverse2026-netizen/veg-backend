@@ -1,5 +1,5 @@
-import { jsonOk } from "../../common/http/json.js";
-import { getProfileTargetsService, updateProfileTargetsService } from "../../services/profile-targets-service.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { getProfileTargetsService, updateProfileTargetsService } from "./profile-targets.service.js";
 export async function getProfileTargets(req, res) {
     const data = await getProfileTargetsService(req.userId);
     return jsonOk(res, data);

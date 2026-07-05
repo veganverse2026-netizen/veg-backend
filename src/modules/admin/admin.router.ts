@@ -17,6 +17,9 @@ import {
   postGymTrainer,
   postUserGymPlanRows
 } from "./admin.controller.js";
+import { getAdminRecipes, postAdminRecipe, patchAdminRecipe, deleteAdminRecipe } from "./admin-recipes.controller.js";
+import { adminGetPosts, adminDeletePost, adminGetReports, adminResolveReport } from "./admin-community.controller.js";
+import { getAdminWorkouts, postAdminWorkout, patchAdminWorkout, deleteAdminWorkout } from "./admin-workouts.controller.js";
 
 export const adminRouter = Router();
 
@@ -122,4 +125,46 @@ adminRouter.patch("/admin/users/:id/gym-plan", requireAdmin, async (req: AuthedR
   } catch (err) {
     return jsonError(res, err);
   }
+});
+
+// ─── Recipes ─────────────────────────────────────────────────────────────────
+adminRouter.get("/admin/recipes", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await getAdminRecipes(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.post("/admin/recipes", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await postAdminRecipe(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.patch("/admin/recipes/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await patchAdminRecipe(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.delete("/admin/recipes/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await deleteAdminRecipe(req, res); } catch (err) { return jsonError(res, err); }
+});
+
+// ─── Workouts ─────────────────────────────────────────────────────────────────
+adminRouter.get("/admin/workouts", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await getAdminWorkouts(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.post("/admin/workouts", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await postAdminWorkout(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.patch("/admin/workouts/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await patchAdminWorkout(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.delete("/admin/workouts/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await deleteAdminWorkout(req, res); } catch (err) { return jsonError(res, err); }
+});
+
+// ─── Community moderation ─────────────────────────────────────────────────────
+adminRouter.get("/admin/posts", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await adminGetPosts(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.delete("/admin/posts/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await adminDeletePost(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.get("/admin/reports", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await adminGetReports(req, res); } catch (err) { return jsonError(res, err); }
+});
+adminRouter.patch("/admin/reports/:id/resolve", requireAdmin, async (req: AuthedRequest, res) => {
+  try { await adminResolveReport(req, res); } catch (err) { return jsonError(res, err); }
 });

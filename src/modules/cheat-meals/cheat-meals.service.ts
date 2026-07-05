@@ -18,19 +18,35 @@ export async function selectCheatMeal(userId: string, recipeId: string) {
   const now = new Date();
   const weekStart = weekStartDate(now);
 
-  const existingSelection = await prisma.cheatMeal.findFirst({
-    where: { userId, weekStart, expiresAt: { gt: now } }
-  });
-  if (existingSelection) throw new HttpError(400, "You already selected this week's cheat meal");
+  try {
+    // Serializable isolation turns the check-then-create below into an
+    // atomic operation: if two requests race for the same user/week, the
+    // database aborts one with a serialization conflict instead of letting
+    // both create a row.
+    await prisma.$transaction(
+      async (tx) => {
+        const existingSelection = await tx.cheatMeal.findFirst({
+          where: { userId, weekStart, expiresAt: { gt: now } }
+        });
+        if (existingSelection) throw new HttpError(400, "You already selected this week's cheat meal");
 
-  await prisma.cheatMeal.create({
-    data: {
-      userId,
-      recipeId,
-      weekStart,
-      expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
-    }
-  });
+        await tx.cheatMeal.create({
+          data: {
+            userId,
+            recipeId,
+            weekStart,
+            expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
+          }
+        });
+      },
+      { isolationLevel: "Serializable" }
+    );
+  } catch (err: any) {
+    if (err instanceof HttpError) throw err;
+    // Postgres serialization failure (40001) from a concurrent conflicting transaction.
+    if (err?.code === "P2034") throw new HttpError(409, "You already selected this week's cheat meal");
+    throw err;
+  }
 
   return { success: true };
 }

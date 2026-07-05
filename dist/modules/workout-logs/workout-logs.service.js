@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 function computePrs(logs) {
     const byExercise = new Map();
     for (const log of logs.slice(0, 200)) {

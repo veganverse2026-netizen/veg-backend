@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma.js";
-import { HttpError } from "../../http/http-errors.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 export async function getAdminOverview() {
     const [users, posts, recipes, gymTrainers, pendingPlanRequests, members, trainers] = await Promise.all([
         prisma.user.count(),
@@ -87,4 +87,326 @@ export async function updateUserRoleForAdmin(input) {
             gymTrainerId: true
         }
     });
+}
+export async function listGymTrainersForAdmin() {
+    return prisma.gymTrainer.findMany({
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+            id: true,
+            name: true,
+            title: true,
+            bio: true,
+            imageUrl: true,
+            sortOrder: true,
+            linkedUserId: true,
+            _count: { select: { assignedUsers: true } }
+        }
+    });
+}
+export async function createGymTrainerForAdmin(input) {
+    if (input.linkedUserId) {
+        const u = await prisma.user.findUnique({ where: { id: input.linkedUserId }, select: { id: true } });
+        if (!u)
+            throw new HttpError(400, "Linked user not found");
+        const clash = await prisma.gymTrainer.findUnique({ where: { linkedUserId: input.linkedUserId } });
+        if (clash)
+            throw new HttpError(400, "That user is already linked to a trainer profile");
+    }
+    return prisma.gymTrainer.create({
+        data: {
+            name: input.name,
+            title: input.title ?? null,
+            bio: input.bio ?? null,
+            imageUrl: input.imageUrl ?? null,
+            sortOrder: input.sortOrder ?? 0,
+            linkedUserId: input.linkedUserId ?? null
+        },
+        select: {
+            id: true,
+            name: true,
+            title: true,
+            bio: true,
+            imageUrl: true,
+            sortOrder: true,
+            linkedUserId: true,
+            _count: { select: { assignedUsers: true } }
+        }
+    });
+}
+export async function updateGymTrainerForAdmin(id, input) {
+    const existing = await prisma.gymTrainer.findUnique({ where: { id } });
+    if (!existing)
+        throw new HttpError(404, "Trainer not found");
+    if (input.linkedUserId !== undefined && input.linkedUserId !== null) {
+        const u = await prisma.user.findUnique({ where: { id: input.linkedUserId }, select: { id: true } });
+        if (!u)
+            throw new HttpError(400, "Linked user not found");
+        const clash = await prisma.gymTrainer.findFirst({
+            where: { linkedUserId: input.linkedUserId, NOT: { id } }
+        });
+        if (clash)
+            throw new HttpError(400, "That user is already linked to another trainer profile");
+    }
+    return prisma.gymTrainer.update({
+        where: { id },
+        data: {
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.title !== undefined ? { title: input.title } : {}),
+            ...(input.bio !== undefined ? { bio: input.bio } : {}),
+            ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
+            ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+            ...(input.linkedUserId !== undefined ? { linkedUserId: input.linkedUserId } : {})
+        },
+        select: {
+            id: true,
+            name: true,
+            title: true,
+            bio: true,
+            imageUrl: true,
+            sortOrder: true,
+            linkedUserId: true,
+            _count: { select: { assignedUsers: true } }
+        }
+    });
+}
+export async function deleteGymTrainerForAdmin(id) {
+    const t = await prisma.gymTrainer.findUnique({
+        where: { id },
+        select: {
+            id: true,
+            _count: { select: { assignedUsers: true, planRequests: true } }
+        }
+    });
+    if (!t)
+        throw new HttpError(404, "Trainer not found");
+    if (t._count.assignedUsers > 0 || t._count.planRequests > 0) {
+        throw new HttpError(400, "Cannot delete trainer with assigned members or existing plan requests");
+    }
+    await prisma.gymTrainer.delete({ where: { id } });
+    return { ok: true };
+}
+export async function listPlanRequestsForAdmin(input) {
+    const limit = Math.min(50, Math.max(1, input.limit));
+    const page = Math.max(1, input.page);
+    const skip = (page - 1) * limit;
+    const where = input.status ? { status: input.status } : undefined;
+    const [items, total] = await Promise.all([
+        prisma.workoutPlanChangeRequest.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: limit,
+            select: {
+                id: true,
+                status: true,
+                memberNote: true,
+                trainerComment: true,
+                createdAt: true,
+                reviewedAt: true,
+                proposedSessionsJson: true,
+                user: { select: { id: true, name: true, email: true } },
+                gymTrainer: { select: { id: true, name: true } },
+                reviewedBy: { select: { id: true, name: true, email: true } }
+            }
+        }),
+        prisma.workoutPlanChangeRequest.count({ where })
+    ]);
+    return { items, total, page, limit, pages: Math.ceil(total / limit) || 1 };
+}
+export function validateGymSessionsJsonPayload(raw) {
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    }
+    catch {
+        throw new HttpError(400, "Body must be valid JSON");
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new HttpError(400, "Must be a non-empty JSON array of gym sessions");
+    }
+    for (let i = 0; i < parsed.length; i++) {
+        const item = parsed[i];
+        if (!item || typeof item !== "object" || typeof item.day !== "string" || !Array.isArray(item.exercises)) {
+            throw new HttpError(400, `Invalid session at index ${i} (need day: string and exercises: array)`);
+        }
+    }
+}
+export async function getPlanRequestByIdForAdmin(requestId) {
+    if (requestId.length < 10)
+        throw new HttpError(400, "Invalid request id");
+    const row = await prisma.workoutPlanChangeRequest.findUnique({
+        where: { id: requestId },
+        select: {
+            id: true,
+            status: true,
+            memberNote: true,
+            trainerComment: true,
+            createdAt: true,
+            reviewedAt: true,
+            proposedSessionsJson: true,
+            user: { select: { id: true, name: true, email: true } },
+            gymTrainer: { select: { id: true, name: true } },
+            reviewedBy: { select: { id: true, name: true, email: true } }
+        }
+    });
+    if (!row)
+        throw new HttpError(404, "Plan request not found");
+    return row;
+}
+export async function patchPlanRequestProposedSessionsForAdmin(input) {
+    validateGymSessionsJsonPayload(input.proposedSessionsJson);
+    const existing = await prisma.workoutPlanChangeRequest.findUnique({
+        where: { id: input.requestId },
+        select: { id: true, status: true }
+    });
+    if (!existing)
+        throw new HttpError(404, "Plan request not found");
+    if (existing.status !== "PENDING") {
+        throw new HttpError(400, "Only PENDING plan requests can be edited here. Use the member gym plan page for live approved programs.");
+    }
+    return prisma.workoutPlanChangeRequest.update({
+        where: { id: input.requestId },
+        data: { proposedSessionsJson: input.proposedSessionsJson },
+        select: {
+            id: true,
+            status: true,
+            proposedSessionsJson: true,
+            updatedAt: true
+        }
+    });
+}
+export async function getUserGymPlanForAdmin(userId) {
+    if (userId.length < 10)
+        throw new HttpError(400, "Invalid user id");
+    const u = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, email: true, role: true, approvedGymPlanJson: true }
+    });
+    if (!u)
+        throw new HttpError(404, "User not found");
+    return u;
+}
+export async function patchUserGymPlanForAdmin(input) {
+    validateGymSessionsJsonPayload(input.approvedGymPlanJson);
+    const u = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+    if (!u)
+        throw new HttpError(404, "User not found");
+    return prisma.user.update({
+        where: { id: input.userId },
+        data: { approvedGymPlanJson: input.approvedGymPlanJson },
+        select: { id: true, name: true, email: true, approvedGymPlanJson: true, updatedAt: true }
+    });
+}
+function strCell(v) {
+    if (v == null)
+        return "";
+    if (typeof v === "string")
+        return v.trim();
+    if (typeof v === "number" && Number.isFinite(v))
+        return String(v);
+    return String(v).trim();
+}
+/** Map weekday label to 0=Sun … 6=Sat; null if unknown (app still parses `day` text). */
+function preferredWeekdayFromDayLabel(day) {
+    const n = day
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z]/g, "");
+    const full = {
+        sunday: 0,
+        monday: 1,
+        tuesday: 2,
+        wednesday: 3,
+        thursday: 4,
+        friday: 5,
+        saturday: 6
+    };
+    if (full[n] !== undefined)
+        return full[n];
+    const short = {
+        sun: 0,
+        mon: 1,
+        tue: 2,
+        wed: 3,
+        thu: 4,
+        fri: 5,
+        sat: 6
+    };
+    if (short[n] !== undefined)
+        return short[n];
+    return null;
+}
+/**
+ * Flat admin rows (day, title, exercise, …) → gym session array stored as approvedGymPlanJson.
+ * Empty `day` / `title` inherit the previous non-empty row (spreadsheet-style blocks).
+ */
+export function adminGymRowsToSessionsJson(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+        throw new HttpError(400, "rows must be a non-empty array");
+    }
+    let lastDay = "";
+    let lastTitle = "";
+    const chunks = [];
+    let cur = null;
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || typeof row !== "object") {
+            throw new HttpError(400, `rows[${i}] must be an object`);
+        }
+        const dayRaw = strCell(row.day);
+        const titleRaw = strCell(row.title);
+        const exercise = strCell(row.exercise);
+        const sets = strCell(row.sets);
+        const reps = strCell(row.reps);
+        const load = strCell(row.load);
+        const rest = strCell(row.rest);
+        const formCuesRaw = strCell(row.formCues);
+        const day = dayRaw || lastDay;
+        const title = titleRaw || lastTitle;
+        if (day)
+            lastDay = day;
+        if (title)
+            lastTitle = title;
+        if (!exercise)
+            continue;
+        if (!day || !title) {
+            throw new HttpError(400, `rows[${i}]: need day and title on the first row (or inherited from a previous row)`);
+        }
+        const key = `${day}|${title}`;
+        const curKey = cur ? `${cur.day}|${cur.title}` : null;
+        if (!cur || curKey !== key) {
+            cur = { day, title, exercises: [] };
+            chunks.push(cur);
+        }
+        cur.exercises.push({
+            name: exercise,
+            sets,
+            reps,
+            load,
+            rest,
+            ...(formCuesRaw ? { formCues: formCuesRaw } : {})
+        });
+    }
+    if (chunks.length === 0) {
+        throw new HttpError(400, "No exercise rows found — each saved row needs at least an exercise name");
+    }
+    const sessions = chunks.map((c) => {
+        const preferredWeekday = preferredWeekdayFromDayLabel(c.day);
+        return {
+            day: c.day,
+            focus: c.title,
+            objective: "",
+            title: c.title,
+            subtitle: "",
+            preferredWeekday,
+            exercises: c.exercises
+        };
+    });
+    const json = JSON.stringify(sessions);
+    validateGymSessionsJsonPayload(json);
+    return json;
+}
+export async function postUserGymPlanRowsForAdmin(input) {
+    const approvedGymPlanJson = adminGymRowsToSessionsJson(input.rows);
+    return patchUserGymPlanForAdmin({ userId: input.userId, approvedGymPlanJson });
 }

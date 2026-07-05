@@ -1,6 +1,6 @@
-import { jsonOk } from "../../common/http/json.js";
-import { requireObject, requireString } from "../../common/validation/validators.js";
-import { credentialsAuthorize, forgotRequestOtp, forgotReset, healthCheck, loginGoogle, loginPassword, loginRequestOtp, loginVerifyOtp, signupRequestOtp, signupVerifyOtp } from "./auth.service.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { requireObject, requireString } from "../../shared/validation/validators.js";
+import { credentialsAuthorize, forgotRequestOtp, forgotReset, healthCheck, loginGoogle, loginPassword, loginRequestOtp, loginVerifyOtp, refreshToken, signupRequestOtp, signupVerifyOtp } from "./auth.service.js";
 export async function getAuthHealth(_req, res) {
     await healthCheck();
     return jsonOk(res, { ok: true });
@@ -67,4 +67,13 @@ export async function postLoginGoogle(req, res) {
     const idToken = requireString(body, "idToken", { trim: true, min: 20 });
     const result = await loginGoogle({ idToken });
     return jsonOk(res, result);
+}
+export async function postRefreshToken(req, res) {
+    const body = requireObject(req.body);
+    const token = requireString(body, "token", { trim: true, min: 10 });
+    const result = await refreshToken({ token });
+    return jsonOk(res, result);
+}
+export async function postLogout(_req, res) {
+    return jsonOk(res, { success: true, message: "Logged out" });
 }

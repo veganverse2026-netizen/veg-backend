@@ -16,6 +16,9 @@ import { postsRouter } from "../modules/posts/posts.router.js";
 import { dmRouter } from "../modules/dm/dm.router.js";
 import { gymRouter } from "../modules/gym/gym.router.js";
 import { adminRouter } from "../modules/admin/admin.router.js";
+import { productsRouter } from "../modules/products/products.router.js";
+import { ordersRouter } from "../modules/orders/orders.router.js";
+import { notificationsRouter } from "../modules/notifications/notifications.router.js";
 
 export const apiRouter = Router();
 
@@ -36,3 +39,6 @@ apiRouter.use(catalogRouter);
 apiRouter.use(journeyRouter);
 apiRouter.use(gymRouter);
 apiRouter.use(adminRouter);
+apiRouter.use(productsRouter);
+apiRouter.use(ordersRouter);
+apiRouter.use(notificationsRouter);

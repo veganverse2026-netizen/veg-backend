@@ -1,6 +1,6 @@
-import { jsonOk } from "../../common/http/json.js";
-import { HttpError } from "../../common/errors/http-error.js";
-import { optionalIsoDateTimeString, optionalNumber, optionalString, requireInt, requireObject, requireString } from "../../common/validation/validators.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { optionalIsoDateTimeString, optionalNumber, optionalString, requireInt, requireObject, requireString } from "../../shared/validation/validators.js";
 import { createWorkoutLog, listWorkoutLogsWithPrs } from "./workout-logs.service.js";
 export async function getWorkoutLogs(req, res) {
     const result = await listWorkoutLogsWithPrs(req.userId);

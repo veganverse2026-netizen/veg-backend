@@ -1,7 +1,22 @@
 import type { Server as HttpServer } from "http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
+import { verifyAccessToken } from "../../shared/utils/jwt.js";
+import { prisma } from "../db/prisma.js";
 
 let io: Server | null = null;
+
+function extractToken(socket: Socket): string | null {
+  const authToken = socket.handshake.auth?.token;
+  if (typeof authToken === "string" && authToken.length) return authToken;
+  const header = socket.handshake.headers.authorization;
+  if (typeof header === "string" && header.startsWith("Bearer ")) return header.slice(7);
+  return null;
+}
+
+async function isConversationMember(userId: string, conversationId: string) {
+  const convo = await (prisma as any).conversation.findUnique({ where: { id: conversationId } });
+  return Boolean(convo && (convo.userAId === userId || convo.userBId === userId));
+}
 
 export function initSocketIo(server: HttpServer) {
   if (io) return io;
@@ -11,11 +26,15 @@ export function initSocketIo(server: HttpServer) {
   });
 
   io.use((socket, next) => {
-    const userId =
-      (typeof socket.handshake.auth?.userId === "string" ? socket.handshake.auth.userId : null) ??
-      (typeof socket.handshake.headers["x-user-id"] === "string" ? socket.handshake.headers["x-user-id"] : null);
-    (socket.data as any).userId = userId;
-    return next();
+    const token = extractToken(socket);
+    if (!token) return next(new Error("Unauthorized"));
+    try {
+      const payload = verifyAccessToken(token);
+      (socket.data as any).userId = payload.sub;
+      return next();
+    } catch {
+      return next(new Error("Unauthorized"));
+    }
   });
 
   io.on("connection", (socket) => {
@@ -31,17 +50,21 @@ export function initSocketIo(server: HttpServer) {
       if (typeof postId === "string" && postId.length) socket.leave(`post:${postId}`);
     });
 
-    socket.on("dm:join", (conversationId: string) => {
-      if (typeof conversationId === "string" && conversationId.length) socket.join(`dm:${conversationId}`);
+    socket.on("dm:join", async (conversationId: string) => {
+      if (typeof conversationId !== "string" || !conversationId.length) return;
+      const userId = (socket.data as any)?.userId;
+      if (!userId || !(await isConversationMember(userId, conversationId))) return;
+      socket.join(`dm:${conversationId}`);
     });
     socket.on("dm:leave", (conversationId: string) => {
       if (typeof conversationId === "string" && conversationId.length) socket.leave(`dm:${conversationId}`);
     });
 
-    socket.on("dm:typing", (payload: { conversationId?: string; isTyping?: boolean }) => {
+    socket.on("dm:typing", async (payload: { conversationId?: string; isTyping?: boolean }) => {
       const conversationId = typeof payload?.conversationId === "string" ? payload.conversationId : null;
       if (!conversationId) return;
       const userId = (socket.data as any)?.userId;
+      if (!userId || !(await isConversationMember(userId, conversationId))) return;
       socket.to(`dm:${conversationId}`).emit("dm:typing", { conversationId, userId, isTyping: Boolean(payload?.isTyping) });
     });
   });

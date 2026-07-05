@@ -1,7 +1,8 @@
-import { jsonOk } from "../../common/http/json.js";
-import { requireUser } from "../../common/auth/require-user.js";
-import { optionalString, requireEnum, requireObject, requireString } from "../../common/validation/validators.js";
-import { addComment, createPost, getFeed, toggleLike, acceptAnswer } from "./posts.service.js";
+import { jsonOk } from "../../shared/http/json-response.js";
+import { HttpError } from "../../shared/errors/http-error.js";
+import { requireUser } from "../../shared/middleware/auth.middleware.js";
+import { optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
+import { addComment, createPost, getFeed, toggleLike, acceptAnswer, reportPost } from "./posts.service.js";
 export async function getPostsFeed(_req, res) {
     const posts = await getFeed();
     return jsonOk(res, posts);
@@ -35,4 +36,12 @@ export async function postAcceptAnswer(req, res) {
     const commentId = requireString(body, "commentId", { trim: true, min: 8 });
     const updated = await acceptAnswer(req.userId, { postId, commentId });
     return jsonOk(res, updated);
+}
+export async function postReport(req, res) {
+    const postId = String(req.params.id ?? "").trim();
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!reason)
+        throw new HttpError(400, "reason required");
+    const data = await reportPost({ reporterId: req.userId, postId, reason });
+    return jsonOk(res, data);
 }
