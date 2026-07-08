@@ -88,15 +88,19 @@ model User {
   passwordHash           String?
   heightCm               Float?
   weightKg               Float?
+  bodyFatPercent         Float?
   age                    Int?
   gender                 Gender?
   activityLevel          ActivityLevel?
   goal                   Goal?
+  dietaryStyle           String?
+  dietaryPreferences     String[]       @default([])
   calorieTargetOverride  Int?
   proteinTargetOverride  Int?
   hydrationTargetOverride Float?
   goalLocked             Boolean        @default(false)
   onboardingDone         Boolean        @default(false)
+  onboardingCompletedAt  DateTime?
   streakCount            Int            @default(0)
   role                   UserRole       @default(MEMBER)
   gymTrainerId           String?
@@ -114,7 +118,11 @@ model User {
   comments               Comment[]
   savedRecipes           SavedRecipe[]
   likes                  PostLike[]
+  postBookmarks          PostBookmark[]
   commentLikes           CommentLike[]
+  challengesCreated      Challenge[]
+  challengeParticipation ChallengeParticipant[]
+  challengeCheckIns      ChallengeCheckIn[]
   following              Follow[]       @relation("Following")
   followers              Follow[]       @relation("Followers")
   dmConversationsA       Conversation[] @relation("ConversationUserA")
@@ -135,13 +143,23 @@ model User {
 }
 
 model GymTrainer {
-  id             String   @id @default(cuid())
-  name           String
-  title          String?
-  bio            String?
-  imageUrl       String?
-  sortOrder      Int      @default(0)
-  linkedUserId   String?  @unique
+  id               String   @id @default(cuid())
+  name             String
+  title            String?
+  bio              String?
+  imageUrl         String?
+  sortOrder        Int      @default(0)
+  certifications   String?
+  specializations  String[] @default([])
+  yearsExperience  Int?
+  workingHours     String?
+  languages        String[] @default([])
+  contactEmail     String?
+  contactPhone     String?
+  active           Boolean  @default(true)
+  approved         Boolean  @default(false)
+  maxUsers         Int?
+  linkedUserId     String?  @unique
   linkedUser     User?    @relation("TrainerLinkedAccount", fields: [linkedUserId], references: [id], onDelete: SetNull)
   assignedUsers  User[]   @relation("AssignedTrainer")
   planRequests   WorkoutPlanChangeRequest[]
@@ -284,6 +302,7 @@ model Post {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments  Comment[]
   likes     PostLike[]
+  bookmarks PostBookmark[]
   reports   Report[]
 }
 
@@ -336,6 +355,18 @@ model PostLike {
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+}
+
+model PostBookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId])
 }
@@ -636,5 +667,69 @@ model JourneyProgress {
   key       String   @unique
   step      Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+enum ChallengeCategory {
+  MEAL
+  WORKOUT
+  STEPS
+  WATER
+  MEDITATION
+  RECIPE
+  GYM_PROGRESS
+  CUSTOM
+}
+
+enum ChallengeDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Challenge {
+  id            String              @id @default(cuid())
+  title         String
+  description   String              @db.Text
+  category      ChallengeCategory   @default(CUSTOM)
+  difficulty    ChallengeDifficulty @default(BEGINNER)
+  coverImageUrl String?
+  rules         String?             @db.Text
+  rewardText    String?             @db.Text
+  durationDays  Int
+  startDate     DateTime            @default(now())
+  endDate       DateTime
+  createdById   String
+  createdAt     DateTime            @default(now())
+
+  createdBy    User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  participants ChallengeParticipant[]
+  checkIns     ChallengeCheckIn[]
+
+  @@index([endDate])
+}
+
+model ChallengeParticipant {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+}
+
+model ChallengeCheckIn {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId, date])
 }
 

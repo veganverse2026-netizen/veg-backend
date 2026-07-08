@@ -1,5 +1,6 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { createNotification } from "../notifications/notifications.service.js";
 
 const ORDER_STATUSES = ["PENDING", "PAID", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"] as const;
 
@@ -92,6 +93,15 @@ export async function createOrderFromStripe(input: {
       },
       include: { items: true },
     });
+  }).then(async (order) => {
+    await createNotification({
+      userId: order.userId,
+      type: "ORDER_UPDATE",
+      title: "Order confirmed",
+      body: `Your order #${order.id.slice(-8).toUpperCase()} has been paid and is being processed.`,
+      link: "/dashboard/orders",
+    });
+    return order;
   });
 }
 
@@ -143,8 +153,18 @@ export async function adminUpdateOrderStatus(orderId: string, status: string) {
   }
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) throw new HttpError(404, "Order not found");
-  return prisma.order.update({
+  const updated = await prisma.order.update({
     where: { id: orderId },
     data: { status: status as any },
   });
+  if (updated.status !== order.status) {
+    await createNotification({
+      userId: updated.userId,
+      type: "ORDER_UPDATE",
+      title: "Order status updated",
+      body: `Your order #${updated.id.slice(-8).toUpperCase()} is now ${updated.status.toLowerCase()}.`,
+      link: "/dashboard/orders",
+    });
+  }
+  return updated;
 }

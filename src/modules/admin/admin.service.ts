@@ -1,6 +1,7 @@
 import type { PlanChangeStatus, UserRole } from "@prisma/client";
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { createNotification } from "../notifications/notifications.service.js";
 
 export async function getAdminOverview() {
   const [users, posts, recipes, gymTrainers, pendingPlanRequests, members, trainers] = await Promise.all([
@@ -109,19 +110,82 @@ export async function updateUserRoleForAdmin(input: {
   });
 }
 
+export async function assignUserGymTrainerForAdmin(input: { userId: string; trainerId: string | null }) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true, name: true } });
+  if (!user) throw new HttpError(404, "User not found");
+
+  if (input.trainerId === null) {
+    return prisma.user.update({
+      where: { id: input.userId },
+      data: { gymTrainerId: null },
+      select: { id: true, name: true, email: true, gymTrainerId: true }
+    });
+  }
+
+  const trainer = await prisma.gymTrainer.findUnique({
+    where: { id: input.trainerId },
+    include: { _count: { select: { assignedUsers: true } } }
+  });
+  if (!trainer) throw new HttpError(400, "Trainer not found");
+  if (!trainer.active) throw new HttpError(400, "This trainer is not active");
+
+  const alreadyAssignedToThisTrainer = (await prisma.user.findUnique({ where: { id: input.userId }, select: { gymTrainerId: true } }))?.gymTrainerId === trainer.id;
+  if (!alreadyAssignedToThisTrainer && trainer.maxUsers != null && trainer._count.assignedUsers >= trainer.maxUsers) {
+    throw new HttpError(400, `${trainer.name} is at capacity (${trainer.maxUsers} members). Increase their limit or choose a different trainer.`);
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: input.userId },
+    data: { gymTrainerId: input.trainerId },
+    select: { id: true, name: true, email: true, gymTrainerId: true }
+  });
+
+  await createNotification({
+    userId: input.userId,
+    type: "GYM",
+    title: "Gym trainer assigned",
+    body: `${trainer.name} is now your dedicated gym trainer and is preparing your personalized workout plan.`,
+    link: "/dashboard/gym",
+  });
+
+  if (trainer.linkedUserId) {
+    await createNotification({
+      userId: trainer.linkedUserId,
+      type: "GYM",
+      title: "New member assigned",
+      body: `${user.name ?? "A new member"} has been assigned to you. Review their profile and create a workout plan.`,
+      link: "/dashboard/gym-trainer",
+    });
+  }
+
+  return updated;
+}
+
+const GYM_TRAINER_ADMIN_SELECT = {
+  id: true,
+  name: true,
+  title: true,
+  bio: true,
+  imageUrl: true,
+  sortOrder: true,
+  certifications: true,
+  specializations: true,
+  yearsExperience: true,
+  workingHours: true,
+  languages: true,
+  contactEmail: true,
+  contactPhone: true,
+  active: true,
+  approved: true,
+  maxUsers: true,
+  linkedUserId: true,
+  _count: { select: { assignedUsers: true } }
+} as const;
+
 export async function listGymTrainersForAdmin() {
   return prisma.gymTrainer.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      title: true,
-      bio: true,
-      imageUrl: true,
-      sortOrder: true,
-      linkedUserId: true,
-      _count: { select: { assignedUsers: true } }
-    }
+    select: GYM_TRAINER_ADMIN_SELECT
   });
 }
 
@@ -131,6 +195,15 @@ export async function createGymTrainerForAdmin(input: {
   bio?: string | null;
   imageUrl?: string | null;
   sortOrder?: number;
+  certifications?: string | null;
+  specializations?: string[];
+  yearsExperience?: number | null;
+  workingHours?: string | null;
+  languages?: string[];
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  active?: boolean;
+  maxUsers?: number | null;
   linkedUserId?: string | null;
 }) {
   if (input.linkedUserId) {
@@ -147,18 +220,18 @@ export async function createGymTrainerForAdmin(input: {
       bio: input.bio ?? null,
       imageUrl: input.imageUrl ?? null,
       sortOrder: input.sortOrder ?? 0,
+      certifications: input.certifications ?? null,
+      specializations: input.specializations ?? [],
+      yearsExperience: input.yearsExperience ?? null,
+      workingHours: input.workingHours ?? null,
+      languages: input.languages ?? [],
+      contactEmail: input.contactEmail ?? null,
+      contactPhone: input.contactPhone ?? null,
+      active: input.active ?? true,
+      maxUsers: input.maxUsers ?? null,
       linkedUserId: input.linkedUserId ?? null
     },
-    select: {
-      id: true,
-      name: true,
-      title: true,
-      bio: true,
-      imageUrl: true,
-      sortOrder: true,
-      linkedUserId: true,
-      _count: { select: { assignedUsers: true } }
-    }
+    select: GYM_TRAINER_ADMIN_SELECT
   });
 }
 
@@ -170,6 +243,16 @@ export async function updateGymTrainerForAdmin(
     bio?: string | null;
     imageUrl?: string | null;
     sortOrder?: number;
+    certifications?: string | null;
+    specializations?: string[];
+    yearsExperience?: number | null;
+    workingHours?: string | null;
+    languages?: string[];
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+    active?: boolean;
+    approved?: boolean;
+    maxUsers?: number | null;
     linkedUserId?: string | null;
   }
 ) {
@@ -185,7 +268,9 @@ export async function updateGymTrainerForAdmin(
     if (clash) throw new HttpError(400, "That user is already linked to another trainer profile");
   }
 
-  return prisma.gymTrainer.update({
+  const wasApproved = existing.approved;
+
+  const updated = await prisma.gymTrainer.update({
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
@@ -193,19 +278,32 @@ export async function updateGymTrainerForAdmin(
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
       ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+      ...(input.certifications !== undefined ? { certifications: input.certifications } : {}),
+      ...(input.specializations !== undefined ? { specializations: input.specializations } : {}),
+      ...(input.yearsExperience !== undefined ? { yearsExperience: input.yearsExperience } : {}),
+      ...(input.workingHours !== undefined ? { workingHours: input.workingHours } : {}),
+      ...(input.languages !== undefined ? { languages: input.languages } : {}),
+      ...(input.contactEmail !== undefined ? { contactEmail: input.contactEmail } : {}),
+      ...(input.contactPhone !== undefined ? { contactPhone: input.contactPhone } : {}),
+      ...(input.active !== undefined ? { active: input.active } : {}),
+      ...(input.approved !== undefined ? { approved: input.approved } : {}),
+      ...(input.maxUsers !== undefined ? { maxUsers: input.maxUsers } : {}),
       ...(input.linkedUserId !== undefined ? { linkedUserId: input.linkedUserId } : {})
     },
-    select: {
-      id: true,
-      name: true,
-      title: true,
-      bio: true,
-      imageUrl: true,
-      sortOrder: true,
-      linkedUserId: true,
-      _count: { select: { assignedUsers: true } }
-    }
+    select: GYM_TRAINER_ADMIN_SELECT
   });
+
+  if (input.approved === true && !wasApproved && updated.linkedUserId) {
+    await createNotification({
+      userId: updated.linkedUserId,
+      type: "GYM",
+      title: "You're approved!",
+      body: "Your trainer profile has been approved. You're now active and can be assigned members.",
+      link: "/dashboard/gym-trainer",
+    });
+  }
+
+  return updated;
 }
 
 export async function deleteGymTrainerForAdmin(id: string) {
@@ -222,6 +320,41 @@ export async function deleteGymTrainerForAdmin(id: string) {
   }
   await prisma.gymTrainer.delete({ where: { id } });
   return { ok: true as const };
+}
+
+export async function getGymTrainerDetailForAdmin(id: string) {
+  const trainer = await prisma.gymTrainer.findUnique({
+    where: { id },
+    select: {
+      ...GYM_TRAINER_ADMIN_SELECT,
+      assignedUsers: {
+        select: { id: true, name: true, email: true, goal: true, approvedGymPlanJson: true, createdAt: true },
+        orderBy: { createdAt: "desc" }
+      },
+      planRequests: {
+        select: { id: true, status: true, createdAt: true, reviewedAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50
+      }
+    }
+  });
+  if (!trainer) throw new HttpError(404, "Trainer not found");
+
+  const reviewed = trainer.planRequests.filter((r) => r.reviewedAt);
+  const avgTurnaroundHours = reviewed.length
+    ? reviewed.reduce((sum, r) => sum + (new Date(r.reviewedAt!).getTime() - new Date(r.createdAt).getTime()), 0) / reviewed.length / 3600000
+    : null;
+
+  return {
+    ...trainer,
+    stats: {
+      totalRequests: trainer.planRequests.length,
+      pendingRequests: trainer.planRequests.filter((r) => r.status === "PENDING").length,
+      approvedRequests: trainer.planRequests.filter((r) => r.status === "APPROVED").length,
+      rejectedRequests: trainer.planRequests.filter((r) => r.status === "REJECTED").length,
+      avgTurnaroundHours: avgTurnaroundHours != null ? Math.round(avgTurnaroundHours * 10) / 10 : null
+    }
+  };
 }
 
 export async function listPlanRequestsForAdmin(input: {

@@ -4,12 +4,14 @@ import { jsonOk } from "../../shared/http/json-response.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import {
   optionalString,
+  optionalStringArray,
   requireEmail,
   requireEnum,
   requireInt,
   requireObject,
   requireString
 } from "../../shared/validation/validators.js";
+import { DIETARY_PREFERENCES, DIETARY_STYLES } from "../../shared/constants/dietary.js";
 import { getPublicUserById, getUserById, getUserStats, searchUsers, updateUserProfile } from "./users.service.js";
 
 export async function getMe(req: AuthedRequest, res: Response) {
@@ -74,6 +76,19 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     goal = requireEnum(body, "goal", ["FAT_LOSS", "MUSCLE_BUILD", "LIFESTYLE"] as const);
   }
 
+  let dietaryStyle: string | undefined;
+  if (body.dietaryStyle !== undefined && body.dietaryStyle !== null) {
+    dietaryStyle = requireEnum(body, "dietaryStyle", DIETARY_STYLES);
+  }
+  const dietaryPreferences = optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES);
+
+  let bodyFatPercent: number | undefined;
+  if (body.bodyFatPercent !== undefined && body.bodyFatPercent !== null) {
+    const v = Number(body.bodyFatPercent);
+    if (!Number.isFinite(v) || v < 3 || v > 60) throw new HttpError(400, "Invalid bodyFatPercent");
+    bodyFatPercent = v;
+  }
+
   const updated = await updateUserProfile(req.userId!, {
     name: name == null ? undefined : name,
     email: email == null ? undefined : email,
@@ -84,7 +99,10 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     ...(age !== undefined ? { age } : {}),
     ...(gender !== undefined ? { gender } : {}),
     ...(activityLevel !== undefined ? { activityLevel } : {}),
-    ...(goal !== undefined ? { goal } : {})
+    ...(goal !== undefined ? { goal } : {}),
+    ...(dietaryStyle !== undefined ? { dietaryStyle } : {}),
+    ...(dietaryPreferences !== undefined ? { dietaryPreferences } : {}),
+    ...(bodyFatPercent !== undefined ? { bodyFatPercent } : {})
   });
 
   return jsonOk(res, updated);

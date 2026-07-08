@@ -4,6 +4,7 @@ import { requireAdmin } from "../../shared/middleware/admin.middleware.js";
 import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import {
   deleteGymTrainer,
+  getGymTrainerDetail,
   getGymTrainers,
   getOverview,
   getPlanRequestById,
@@ -13,6 +14,7 @@ import {
   patchGymTrainer,
   patchPlanRequestSessions,
   patchUserGymPlan,
+  patchUserGymTrainer,
   patchUserRole,
   postGymTrainer,
   postUserGymPlanRows
@@ -47,9 +49,25 @@ adminRouter.patch("/admin/users/:id/role", requireAdmin, async (req: AuthedReque
   }
 });
 
+adminRouter.patch("/admin/users/:id/gym-trainer", requireAdmin, async (req: AuthedRequest, res) => {
+  try {
+    await patchUserGymTrainer(req, res);
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
 adminRouter.get("/admin/gym-trainers", requireAdmin, async (req: AuthedRequest, res) => {
   try {
     await getGymTrainers(req, res);
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+adminRouter.get("/admin/gym-trainers/:id", requireAdmin, async (req: AuthedRequest, res) => {
+  try {
+    await getGymTrainerDetail(req, res);
   } catch (err) {
     return jsonError(res, err);
   }

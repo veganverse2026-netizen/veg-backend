@@ -59,6 +59,24 @@ export function requireEnum<T extends readonly string[]>(obj: AnyObj, key: strin
   return v as T[number];
 }
 
+export function optionalStringArray<T extends readonly string[]>(obj: AnyObj, key: string, allowed: T, message?: string): T[number][] | undefined {
+  const raw = obj[key];
+  if (raw == null) return undefined;
+  if (!Array.isArray(raw) || !raw.every((v) => typeof v === "string" && allowed.includes(v))) {
+    throw new HttpError(400, message ?? `Invalid ${key}`);
+  }
+  return raw as T[number][];
+}
+
+export function optionalFreeStringArray(obj: AnyObj, key: string): string[] | undefined {
+  const raw = obj[key];
+  if (raw == null) return undefined;
+  if (!Array.isArray(raw) || !raw.every((v) => typeof v === "string")) {
+    throw new HttpError(400, `Invalid ${key}`);
+  }
+  return raw.map((v) => v.trim()).filter(Boolean);
+}
+
 export function optionalIsoDateTimeString(obj: AnyObj, key: string) {
   const raw = obj[key];
   if (raw == null) return undefined;

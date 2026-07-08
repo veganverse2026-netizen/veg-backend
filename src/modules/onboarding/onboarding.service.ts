@@ -10,6 +10,9 @@ export async function completeOnboarding(
     gender: "FEMALE" | "MALE" | "OTHER";
     activityLevel: "SEDENTARY" | "LIGHT" | "MODERATE" | "ACTIVE" | "ATHLETE";
     goal: "FAT_LOSS" | "MUSCLE_BUILD" | "LIFESTYLE";
+    dietaryStyle?: string;
+    dietaryPreferences?: string[];
+    bodyFatPercent?: number;
     gymTrainerId?: string | null;
   }
 ) {
@@ -41,6 +44,10 @@ export async function completeOnboarding(
       goal: input.goal,
       goalLocked: user.goalLocked || lockGoal,
       onboardingDone: true,
+      ...(user.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
+      ...(input.dietaryStyle !== undefined ? { dietaryStyle: input.dietaryStyle } : {}),
+      ...(input.dietaryPreferences !== undefined ? { dietaryPreferences: input.dietaryPreferences } : {}),
+      ...(input.bodyFatPercent !== undefined ? { bodyFatPercent: input.bodyFatPercent } : {}),
       ...(trainerConnect ? { gymTrainer: trainerConnect } : {})
     }
   });

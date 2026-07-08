@@ -1,11 +1,41 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { getIo } from "../../infrastructure/realtime/socket.js";
+import { createNotification } from "../notifications/notifications.service.js";
 
 const prismaAny = prisma as any;
 
 function orderedPair(a: string, b: string) {
   return a < b ? { userAId: a, userBId: b } : { userAId: b, userBId: a };
+}
+
+// Scoped narrowly to the trainer<->assigned-member relationship, not all DMs
+// in general — bridges the real-time chat into the Notification center for
+// that specific pairing only.
+async function notifyIfTrainerMemberPair(senderId: string, recipientId: string, content: string) {
+  const [sender, recipient] = await Promise.all([
+    prisma.user.findUnique({ where: { id: senderId }, select: { name: true, role: true, gymTrainerId: true } }),
+    prisma.user.findUnique({ where: { id: recipientId }, select: { role: true, gymTrainerId: true } })
+  ]);
+  if (!sender || !recipient) return;
+
+  let isTrainerMemberPair = false;
+  if (sender.role === "GYM_TRAINER" && recipient.gymTrainerId) {
+    const trainerProfile = await prisma.gymTrainer.findUnique({ where: { id: recipient.gymTrainerId }, select: { linkedUserId: true } });
+    isTrainerMemberPair = trainerProfile?.linkedUserId === senderId;
+  } else if (recipient.role === "GYM_TRAINER" && sender.gymTrainerId) {
+    const trainerProfile = await prisma.gymTrainer.findUnique({ where: { id: sender.gymTrainerId }, select: { linkedUserId: true } });
+    isTrainerMemberPair = trainerProfile?.linkedUserId === recipientId;
+  }
+  if (!isTrainerMemberPair) return;
+
+  await createNotification({
+    userId: recipientId,
+    type: "GYM",
+    title: recipient.role === "GYM_TRAINER" ? "New message from your member" : "New message from your trainer",
+    body: `${sender.name ?? "Someone"}: "${content.slice(0, 80)}"`,
+    link: recipient.role === "GYM_TRAINER" ? "/dashboard/gym-trainer" : "/dashboard/gym",
+  });
 }
 
 export async function listInbox(userId: string) {
@@ -68,6 +98,9 @@ export async function sendMessage(userId: string, conversationId: string, conten
   } catch {
     // ignore if io not initialized
   }
+
+  const recipientId = convo.userAId === userId ? convo.userBId : convo.userAId;
+  await notifyIfTrainerMemberPair(userId, recipientId, content);
 
   return msg;
 }

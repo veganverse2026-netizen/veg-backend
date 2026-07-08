@@ -3,7 +3,17 @@ import { jsonOk } from "../../shared/http/json-response.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
-import { addComment, createPost, getFeed, toggleLike, toggleCommentLike, acceptAnswer, reportPost } from "./posts.service.js";
+import {
+  addComment,
+  createPost,
+  getFeed,
+  toggleLike,
+  toggleCommentLike,
+  toggleBookmark,
+  listBookmarkedPosts,
+  acceptAnswer,
+  reportPost
+} from "./posts.service.js";
 
 export async function getPostsFeed(_req: Request, res: Response) {
   const posts = await getFeed();
@@ -47,6 +57,18 @@ export async function postCommentLike(req: AuthedRequest, res: Response) {
   const commentId = requireString(body, "commentId", { trim: true, min: 8 });
   const result = await toggleCommentLike(req.userId!, commentId);
   return jsonOk(res, result);
+}
+
+export async function postBookmark(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const postId = requireString(body, "postId", { trim: true, min: 8 });
+  const result = await toggleBookmark(req.userId!, postId);
+  return jsonOk(res, result);
+}
+
+export async function getBookmarkedPosts(req: AuthedRequest, res: Response) {
+  const posts = await listBookmarkedPosts(req.userId!);
+  return jsonOk(res, posts);
 }
 
 export async function postAcceptAnswer(req: AuthedRequest, res: Response) {

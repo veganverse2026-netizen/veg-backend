@@ -1,6 +1,7 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { getIo } from "../../infrastructure/realtime/socket.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { createNotification } from "../notifications/notifications.service.js";
 
 const MAX_FEED_POSTS = 50;
 
@@ -95,6 +96,18 @@ export async function addComment(userId: string, input: { postId: string; conten
       kind: input.parentId ? "reply:created" : "comment:created"
     });
   } catch {}
+
+  const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { userId: true } });
+  if (post && post.userId !== userId) {
+    await createNotification({
+      userId: post.userId,
+      type: "COMMUNITY",
+      title: input.parentId ? "New reply on your comment" : "New comment on your post",
+      body: `${comment.user.name ?? "Someone"} ${input.parentId ? "replied to your comment" : "commented on your post"}: "${input.content.slice(0, 80)}"`,
+      link: "/dashboard/community",
+    });
+  }
+
   return comment;
 }
 
@@ -130,7 +143,49 @@ export async function toggleLike(userId: string, postId: string) {
   try {
     getIo().to(`post:${postId}`).to("feed").emit("post:update", { postId, kind: "like:changed" });
   } catch {}
+
+  const [post, liker] = await Promise.all([
+    prisma.post.findUnique({ where: { id: postId }, select: { userId: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+  ]);
+  if (post && post.userId !== userId) {
+    await createNotification({
+      userId: post.userId,
+      type: "COMMUNITY",
+      title: "New like on your post",
+      body: `${liker?.name ?? "Someone"} liked your post.`,
+      link: "/dashboard/community",
+    });
+  }
+
   return { liked: true };
+}
+
+export async function toggleBookmark(userId: string, postId: string) {
+  const existing = await prisma.postBookmark.findUnique({ where: { userId_postId: { userId, postId } } });
+  if (existing) {
+    await prisma.postBookmark.delete({ where: { userId_postId: { userId, postId } } });
+    return { bookmarked: false };
+  }
+  await prisma.postBookmark.create({ data: { userId, postId } });
+  return { bookmarked: true };
+}
+
+export async function listBookmarkedPosts(userId: string) {
+  const posts = await prisma.post.findMany({
+    where: { bookmarks: { some: { userId } } },
+    include: {
+      user: { select: { id: true, name: true, goal: true } },
+      comments: {
+        orderBy: { createdAt: "asc" },
+        include: flatCommentInclude
+      },
+      likes: true
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) }));
 }
 
 export async function reportPost(input: { reporterId: string; postId: string; reason: string }) {

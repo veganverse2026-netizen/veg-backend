@@ -19,6 +19,7 @@ import { adminRouter } from "../modules/admin/admin.router.js";
 import { productsRouter } from "../modules/products/products.router.js";
 import { ordersRouter } from "../modules/orders/orders.router.js";
 import { notificationsRouter } from "../modules/notifications/notifications.router.js";
+import { challengesRouter } from "../modules/challenges/challenges.router.js";
 
 export const apiRouter = Router();
 
@@ -42,3 +43,4 @@ apiRouter.use(adminRouter);
 apiRouter.use(productsRouter);
 apiRouter.use(ordersRouter);
 apiRouter.use(notificationsRouter);
+apiRouter.use(challengesRouter);

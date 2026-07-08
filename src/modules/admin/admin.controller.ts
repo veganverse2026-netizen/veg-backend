@@ -3,15 +3,20 @@ import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { jsonOk } from "../../shared/http/json-response.js";
 import {
+  optionalBoolean,
+  optionalFreeStringArray,
+  optionalNumber,
   optionalString,
   requireEnum,
   requireObject,
   requireString
 } from "../../shared/validation/validators.js";
 import {
+  assignUserGymTrainerForAdmin,
   createGymTrainerForAdmin,
   deleteGymTrainerForAdmin,
   getAdminOverview,
+  getGymTrainerDetailForAdmin,
   getPlanRequestByIdForAdmin,
   getUserGymPlanForAdmin,
   listGymTrainersForAdmin,
@@ -54,9 +59,32 @@ export async function patchUserRole(req: AuthedRequest, res: Response) {
   return jsonOk(res, updated);
 }
 
+export async function patchUserGymTrainer(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const targetUserId = String(req.params.id ?? "").trim();
+  if (targetUserId.length < 10) throw new HttpError(400, "Invalid id");
+
+  let trainerId: string | null;
+  if (body.trainerId === null) {
+    trainerId = null;
+  } else {
+    trainerId = requireString(body, "trainerId", { trim: true, min: 8 });
+  }
+
+  const updated = await assignUserGymTrainerForAdmin({ userId: targetUserId, trainerId });
+  return jsonOk(res, updated);
+}
+
 export async function getGymTrainers(_req: AuthedRequest, res: Response) {
   const rows = await listGymTrainersForAdmin();
   return jsonOk(res, rows);
+}
+
+export async function getGymTrainerDetail(req: AuthedRequest, res: Response) {
+  const id = String(req.params.id ?? "").trim();
+  if (id.length < 8) throw new HttpError(400, "Invalid id");
+  const detail = await getGymTrainerDetailForAdmin(id);
+  return jsonOk(res, detail);
 }
 
 export async function postGymTrainer(req: AuthedRequest, res: Response) {
@@ -65,6 +93,15 @@ export async function postGymTrainer(req: AuthedRequest, res: Response) {
   const title = optionalString(body, "title", { max: 200 });
   const bio = optionalString(body, "bio", { max: 4000 });
   const imageUrl = optionalString(body, "imageUrl", { max: 2000 });
+  const certifications = optionalString(body, "certifications", { max: 2000 });
+  const specializations = optionalFreeStringArray(body, "specializations");
+  const yearsExperience = optionalNumber(body, "yearsExperience");
+  const workingHours = optionalString(body, "workingHours", { max: 500 });
+  const languages = optionalFreeStringArray(body, "languages");
+  const contactEmail = optionalString(body, "contactEmail", { max: 200 });
+  const contactPhone = optionalString(body, "contactPhone", { max: 60 });
+  const active = optionalBoolean(body, "active");
+  const maxUsers = optionalNumber(body, "maxUsers");
 
   let sortOrder: number | undefined;
   if (body.sortOrder !== undefined && body.sortOrder !== null) {
@@ -86,6 +123,15 @@ export async function postGymTrainer(req: AuthedRequest, res: Response) {
     bio: bio == null ? undefined : bio,
     imageUrl: imageUrl == null ? undefined : imageUrl,
     sortOrder,
+    certifications: certifications == null ? undefined : certifications,
+    specializations,
+    yearsExperience: yearsExperience == null ? undefined : Math.floor(yearsExperience),
+    workingHours: workingHours == null ? undefined : workingHours,
+    languages,
+    contactEmail: contactEmail == null ? undefined : contactEmail,
+    contactPhone: contactPhone == null ? undefined : contactPhone,
+    active,
+    maxUsers: maxUsers == null ? undefined : Math.floor(maxUsers),
     linkedUserId
   });
   return jsonOk(res, created);
@@ -100,12 +146,30 @@ export async function patchGymTrainer(req: AuthedRequest, res: Response) {
   const title = body.title !== undefined ? optionalString(body, "title", { max: 200 }) : undefined;
   const bio = body.bio !== undefined ? optionalString(body, "bio", { max: 4000 }) : undefined;
   const imageUrl = body.imageUrl !== undefined ? optionalString(body, "imageUrl", { max: 2000 }) : undefined;
+  const certifications = body.certifications !== undefined ? optionalString(body, "certifications", { max: 2000 }) : undefined;
+  const specializations = optionalFreeStringArray(body, "specializations");
+  const yearsExperience = body.yearsExperience !== undefined ? optionalNumber(body, "yearsExperience") : undefined;
+  const workingHours = body.workingHours !== undefined ? optionalString(body, "workingHours", { max: 500 }) : undefined;
+  const languages = optionalFreeStringArray(body, "languages");
+  const contactEmail = body.contactEmail !== undefined ? optionalString(body, "contactEmail", { max: 200 }) : undefined;
+  const contactPhone = body.contactPhone !== undefined ? optionalString(body, "contactPhone", { max: 60 }) : undefined;
+  const active = optionalBoolean(body, "active");
+  const approved = optionalBoolean(body, "approved");
 
   let sortOrder: number | undefined;
   if (body.sortOrder !== undefined && body.sortOrder !== null) {
     const n = Number(body.sortOrder);
     if (!Number.isFinite(n)) throw new HttpError(400, "Invalid sortOrder");
     sortOrder = Math.floor(n);
+  }
+
+  let maxUsers: number | null | undefined;
+  if (body.maxUsers === null) {
+    maxUsers = null;
+  } else if (body.maxUsers !== undefined) {
+    const n = Number(body.maxUsers);
+    if (!Number.isFinite(n) || n < 0) throw new HttpError(400, "Invalid maxUsers");
+    maxUsers = Math.floor(n);
   }
 
   let linkedUserId: string | null | undefined;
@@ -121,6 +185,16 @@ export async function patchGymTrainer(req: AuthedRequest, res: Response) {
     ...(bio !== undefined ? { bio } : {}),
     ...(imageUrl !== undefined ? { imageUrl } : {}),
     ...(sortOrder !== undefined ? { sortOrder } : {}),
+    ...(certifications !== undefined ? { certifications } : {}),
+    ...(specializations !== undefined ? { specializations } : {}),
+    ...(yearsExperience !== undefined ? { yearsExperience: yearsExperience == null ? null : Math.floor(yearsExperience) } : {}),
+    ...(workingHours !== undefined ? { workingHours } : {}),
+    ...(languages !== undefined ? { languages } : {}),
+    ...(maxUsers !== undefined ? { maxUsers } : {}),
+    ...(contactEmail !== undefined ? { contactEmail } : {}),
+    ...(contactPhone !== undefined ? { contactPhone } : {}),
+    ...(active !== undefined ? { active } : {}),
+    ...(approved !== undefined ? { approved } : {}),
     ...(linkedUserId !== undefined ? { linkedUserId } : {})
   });
   return jsonOk(res, updated);

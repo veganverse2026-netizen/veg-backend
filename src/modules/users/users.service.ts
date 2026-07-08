@@ -34,12 +34,16 @@ export async function getUserById(id: string) {
       goal: true,
       goalLocked: true,
       onboardingDone: true,
+      onboardingCompletedAt: true,
       streakCount: true,
       heightCm: true,
       weightKg: true,
+      bodyFatPercent: true,
       age: true,
       gender: true,
       activityLevel: true,
+      dietaryStyle: true,
+      dietaryPreferences: true,
       calorieTargetOverride: true,
       proteinTargetOverride: true,
       hydrationTargetOverride: true,
@@ -54,7 +58,8 @@ export async function getUserById(id: string) {
           name: true,
           title: true,
           bio: true,
-          imageUrl: true
+          imageUrl: true,
+          linkedUserId: true
         }
       }
     }
@@ -74,6 +79,9 @@ export async function updateUserProfile(
     gender?: "FEMALE" | "MALE" | "OTHER";
     activityLevel?: "SEDENTARY" | "LIGHT" | "MODERATE" | "ACTIVE" | "ATHLETE";
     goal?: "FAT_LOSS" | "MUSCLE_BUILD" | "LIFESTYLE";
+    dietaryStyle?: string;
+    dietaryPreferences?: string[];
+    bodyFatPercent?: number;
   }
 ) {
   const existing = await prisma.user.findUnique({
@@ -110,6 +118,9 @@ export async function updateUserProfile(
         gender: input.gender === undefined ? undefined : input.gender,
         activityLevel: input.activityLevel === undefined ? undefined : input.activityLevel,
         goal: input.goal === undefined ? undefined : input.goal,
+        dietaryStyle: input.dietaryStyle === undefined ? undefined : input.dietaryStyle,
+        dietaryPreferences: input.dietaryPreferences === undefined ? undefined : input.dietaryPreferences,
+        bodyFatPercent: input.bodyFatPercent === undefined ? undefined : input.bodyFatPercent,
         ...(input.goal !== undefined ? { goalLocked: existing.goalLocked || Boolean(lockGoal) } : {})
       },
       select: {
@@ -120,12 +131,16 @@ export async function updateUserProfile(
         goal: true,
         goalLocked: true,
         onboardingDone: true,
+        onboardingCompletedAt: true,
         streakCount: true,
         heightCm: true,
         weightKg: true,
+        bodyFatPercent: true,
         age: true,
         gender: true,
         activityLevel: true,
+        dietaryStyle: true,
+        dietaryPreferences: true,
         calorieTargetOverride: true,
         proteinTargetOverride: true,
         hydrationTargetOverride: true,
@@ -140,7 +155,8 @@ export async function updateUserProfile(
             name: true,
             title: true,
             bio: true,
-            imageUrl: true
+            imageUrl: true,
+            linkedUserId: true
           }
         }
       }
