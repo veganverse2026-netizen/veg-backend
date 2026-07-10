@@ -23,9 +23,7 @@ export async function notifyTrainerPlanRequest(memberUserId, requestId, gymTrain
     const short = requestId.slice(0, 8);
     const content = `📋 Gym week submitted for approval
 
-${label} sent you their proposed gym week (ref · ${short}). Review it on your Trainer dashboard (/trainer), or reply here.
-
-Request ID: ${requestId}`;
+${label} sent you their proposed gym week (ref · ${short}). Review it in your Trainer Portal on the admin panel (Gym Trainer → pending requests), or reply here.`;
     await sendMessage(memberUserId, convo.id, content);
     return { notified: true, conversationId: convo.id };
 }

@@ -1,5 +1,18 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import type { NotificationType } from "@prisma/client";
+import { resolveNotificationPrefs, type NotificationPrefs } from "../../shared/constants/settings.js";
+
+const TYPE_TO_PREF: Record<NotificationType, keyof NotificationPrefs> = {
+  ORDER_UPDATE: "orderUpdates",
+  COMMUNITY: "community",
+  GYM: "gym",
+  MEAL: "meals",
+  SYSTEM: "system",
+};
+
+export function notificationTypeEnabled(storedPrefs: unknown, type: NotificationType) {
+  return resolveNotificationPrefs(storedPrefs)[TYPE_TO_PREF[type]];
+}
 
 export async function listMyNotifications(userId: string, opts: { limit?: number; unreadOnly?: boolean }) {
   const limit = Math.min(50, opts.limit ?? 20);
@@ -30,6 +43,12 @@ export async function createNotification(input: {
   body: string;
   link?: string;
 }) {
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { notificationPrefs: true }
+  });
+  if (!user) return null;
+  if (!notificationTypeEnabled(user.notificationPrefs, input.type)) return null;
   return prisma.notification.create({ data: { ...input } });
 }
 
@@ -41,14 +60,16 @@ export async function broadcastNotification(input: {
   roleFilter?: string;
 }) {
   const where = input.roleFilter ? { role: input.roleFilter as any } : undefined;
-  const users = await prisma.user.findMany({ where, select: { id: true } });
-  const data = users.map((u) => ({
-    userId: u.id,
-    type: input.type,
-    title: input.title,
-    body: input.body,
-    link: input.link ?? null,
-  }));
+  const users = await prisma.user.findMany({ where, select: { id: true, notificationPrefs: true } });
+  const data = users
+    .filter((u) => notificationTypeEnabled(u.notificationPrefs, input.type))
+    .map((u) => ({
+      userId: u.id,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      link: input.link ?? null,
+    }));
   const result = await prisma.notification.createMany({ data });
   return { sent: result.count };
 }

@@ -1,5 +1,60 @@
+import { compare, hash } from "bcryptjs";
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { resolveNotificationPrefs, type NotificationPrefs } from "../../shared/constants/settings.js";
+
+// Single source of truth for what a user sees about themselves. passwordHash
+// is selected only to derive hasPassword and is stripped by toOwnProfile().
+const OWN_PROFILE_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  image: true,
+  goal: true,
+  goalLocked: true,
+  onboardingDone: true,
+  onboardingCompletedAt: true,
+  streakCount: true,
+  heightCm: true,
+  weightKg: true,
+  bodyFatPercent: true,
+  age: true,
+  gender: true,
+  activityLevel: true,
+  dietaryStyle: true,
+  dietaryPreferences: true,
+  calorieTargetOverride: true,
+  proteinTargetOverride: true,
+  hydrationTargetOverride: true,
+  unitPreference: true,
+  language: true,
+  notificationPrefs: true,
+  role: true,
+  gymTrainerId: true,
+  approvedGymPlanJson: true,
+  passwordHash: true,
+  createdAt: true,
+  updatedAt: true,
+  gymTrainer: {
+    select: {
+      id: true,
+      name: true,
+      title: true,
+      bio: true,
+      imageUrl: true,
+      linkedUserId: true
+    }
+  }
+} as const;
+
+function toOwnProfile<T extends { passwordHash: string | null; notificationPrefs: unknown }>(user: T) {
+  const { passwordHash, ...rest } = user;
+  return {
+    ...rest,
+    hasPassword: Boolean(passwordHash),
+    notificationPrefs: resolveNotificationPrefs(user.notificationPrefs)
+  };
+}
 
 export async function getPublicUserById(id: string) {
   return await prisma.user.findUnique({
@@ -24,46 +79,11 @@ export async function getPublicUserById(id: string) {
 }
 
 export async function getUserById(id: string) {
-  return await prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      goal: true,
-      goalLocked: true,
-      onboardingDone: true,
-      onboardingCompletedAt: true,
-      streakCount: true,
-      heightCm: true,
-      weightKg: true,
-      bodyFatPercent: true,
-      age: true,
-      gender: true,
-      activityLevel: true,
-      dietaryStyle: true,
-      dietaryPreferences: true,
-      calorieTargetOverride: true,
-      proteinTargetOverride: true,
-      hydrationTargetOverride: true,
-      role: true,
-      gymTrainerId: true,
-      approvedGymPlanJson: true,
-      createdAt: true,
-      updatedAt: true,
-      gymTrainer: {
-        select: {
-          id: true,
-          name: true,
-          title: true,
-          bio: true,
-          imageUrl: true,
-          linkedUserId: true
-        }
-      }
-    }
+    select: OWN_PROFILE_SELECT
   });
+  return user ? toOwnProfile(user) : null;
 }
 
 export async function updateUserProfile(
@@ -82,6 +102,9 @@ export async function updateUserProfile(
     dietaryStyle?: string;
     dietaryPreferences?: string[];
     bodyFatPercent?: number;
+    unitPreference?: "METRIC" | "IMPERIAL";
+    language?: string;
+    notificationPrefs?: NotificationPrefs;
   }
 ) {
   const existing = await prisma.user.findUnique({
@@ -105,7 +128,7 @@ export async function updateUserProfile(
     input.goal !== undefined && (input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD");
 
   try {
-    return await prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: userId },
       data: {
         name: input.name ?? undefined,
@@ -121,50 +144,61 @@ export async function updateUserProfile(
         dietaryStyle: input.dietaryStyle === undefined ? undefined : input.dietaryStyle,
         dietaryPreferences: input.dietaryPreferences === undefined ? undefined : input.dietaryPreferences,
         bodyFatPercent: input.bodyFatPercent === undefined ? undefined : input.bodyFatPercent,
+        unitPreference: input.unitPreference === undefined ? undefined : input.unitPreference,
+        language: input.language === undefined ? undefined : input.language,
+        notificationPrefs: input.notificationPrefs === undefined ? undefined : input.notificationPrefs,
         ...(input.goal !== undefined ? { goalLocked: existing.goalLocked || Boolean(lockGoal) } : {})
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        goal: true,
-        goalLocked: true,
-        onboardingDone: true,
-        onboardingCompletedAt: true,
-        streakCount: true,
-        heightCm: true,
-        weightKg: true,
-        bodyFatPercent: true,
-        age: true,
-        gender: true,
-        activityLevel: true,
-        dietaryStyle: true,
-        dietaryPreferences: true,
-        calorieTargetOverride: true,
-        proteinTargetOverride: true,
-        hydrationTargetOverride: true,
-        role: true,
-        gymTrainerId: true,
-        approvedGymPlanJson: true,
-        createdAt: true,
-        updatedAt: true,
-        gymTrainer: {
-          select: {
-            id: true,
-            name: true,
-            title: true,
-            bio: true,
-            imageUrl: true,
-            linkedUserId: true
-          }
-        }
-      }
+      select: OWN_PROFILE_SELECT
     });
+    return toOwnProfile(updated);
   } catch (err: any) {
     if (err?.code === "P2002") throw new HttpError(400, "Email already in use");
     throw err;
   }
+}
+
+export async function changeUserPassword(
+  userId: string,
+  input: { currentPassword?: string; newPassword: string }
+) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true }
+  });
+  if (!user) throw new HttpError(404, "User not found");
+
+  if (user.passwordHash) {
+    if (!input.currentPassword) throw new HttpError(400, "Current password is required");
+    const valid = await compare(input.currentPassword, user.passwordHash);
+    if (!valid) throw new HttpError(400, "Current password is incorrect");
+    if (input.currentPassword === input.newPassword) {
+      throw new HttpError(400, "New password must be different from the current one");
+    }
+  }
+  // Google-only accounts (no passwordHash) may set their first password here.
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: await hash(input.newPassword, 10) }
+  });
+  return { ok: true };
+}
+
+export async function deleteUserAccount(userId: string, confirmEmail: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, role: true }
+  });
+  if (!user) throw new HttpError(404, "User not found");
+  if (user.role === "ADMIN") throw new HttpError(400, "Admin accounts cannot be deleted from the app");
+  if (!user.email || confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+    throw new HttpError(400, "Email confirmation does not match your account email");
+  }
+
+  // All user-owned relations cascade (or set-null) at the DB level.
+  await prisma.user.delete({ where: { id: userId } });
+  return { ok: true };
 }
 
 export async function getUserStats(userId: string) {
@@ -210,4 +244,3 @@ export async function searchUsers(searchText: string, limit = 10) {
     }
   });
 }
-

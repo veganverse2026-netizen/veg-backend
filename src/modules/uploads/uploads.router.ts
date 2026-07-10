@@ -37,6 +37,8 @@ uploadsRouter.post("/uploads/sign", requireUser, async (req: AuthedRequest, res)
         ? process.env.CLOUDINARY_FOLDER_PROFILES || "veganfit/profiles"
         : purpose === "challenge"
         ? process.env.CLOUDINARY_FOLDER_CHALLENGES || "veganfit/challenges"
+        : purpose === "voice"
+        ? process.env.CLOUDINARY_FOLDER_VOICE || "veganfit/voice"
         : process.env.CLOUDINARY_FOLDER_POSTS || "veganfit/posts";
 
     const signature = signCloudinary({ folder, timestamp }, apiSecret);

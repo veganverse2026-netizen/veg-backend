@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/http/async-handler.js";
 import { requireUser } from "../../shared/middleware/auth.middleware.js";
-import { deleteConversationById, deleteMessageById, getInbox, getMessages, postConversation, postMarkRead, postMessage } from "./dm.controller.js";
+import { deleteConversationById, deleteMessageById, getInbox, getSupportContactHandler, getMessages, postConversation, postMarkRead, postMessage } from "./dm.controller.js";
 export const dmRouter = Router();
 dmRouter.get("/conversations", requireUser, asyncHandler(getInbox));
+dmRouter.get("/dm/support-contact", requireUser, asyncHandler(getSupportContactHandler));
 dmRouter.post("/conversations", requireUser, asyncHandler(postConversation));
 dmRouter.get("/conversations/:id/messages", requireUser, asyncHandler(getMessages));
 dmRouter.post("/conversations/:id/messages", requireUser, asyncHandler(postMessage));

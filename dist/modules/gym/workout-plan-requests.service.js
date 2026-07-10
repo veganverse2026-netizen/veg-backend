@@ -1,6 +1,7 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { notifyTrainerPlanRequest } from "./plan-request-notify.js";
+import { createNotification } from "../notifications/notifications.service.js";
 function parseSessionsJson(raw) {
     try {
         const parsed = JSON.parse(raw);
@@ -45,6 +46,19 @@ export async function createPlanChangeRequest(userId, input) {
         }
     });
     const dmNotify = await notifyTrainerPlanRequest(userId, created.id, created.gymTrainerId);
+    if (created.gymTrainer?.id) {
+        const trainerProfile = await prisma.gymTrainer.findUnique({ where: { id: created.gymTrainer.id }, select: { linkedUserId: true } });
+        if (trainerProfile?.linkedUserId) {
+            const member = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+            await createNotification({
+                userId: trainerProfile.linkedUserId,
+                type: "GYM",
+                title: "Plan change requested",
+                body: `${member?.name ?? "A member"} requested a change to their workout plan.`,
+                link: "/dashboard/gym-trainer",
+            });
+        }
+    }
     return { ...created, dmNotify };
 }
 export async function getLatestPlanRequestForMember(userId) {
@@ -73,7 +87,104 @@ export async function listPendingForTrainer(trainerUserId) {
         }
     });
 }
-export async function reviewPlanRequest(trainerUserId, requestId, action, trainerComment) {
+export async function listMyMembers(trainerUserId) {
+    const profile = await prisma.gymTrainer.findFirst({
+        where: { linkedUserId: trainerUserId }
+    });
+    if (!profile)
+        return [];
+    return prisma.user.findMany({
+        where: { gymTrainerId: profile.id },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            goal: true,
+            heightCm: true,
+            weightKg: true,
+            age: true,
+            gender: true,
+            activityLevel: true,
+            dietaryStyle: true,
+            approvedGymPlanJson: true,
+            onboardingCompletedAt: true
+        },
+        orderBy: { createdAt: "desc" }
+    });
+}
+export async function getMemberDetailForTrainer(trainerUserId, memberId) {
+    const profile = await prisma.gymTrainer.findFirst({
+        where: { linkedUserId: trainerUserId }
+    });
+    if (!profile) {
+        throw new HttpError(403, "No trainer profile is linked to this account");
+    }
+    const member = await prisma.user.findUnique({
+        where: { id: memberId },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            goal: true,
+            heightCm: true,
+            weightKg: true,
+            age: true,
+            gender: true,
+            activityLevel: true,
+            dietaryStyle: true,
+            dietaryPreferences: true,
+            bodyFatPercent: true,
+            approvedGymPlanJson: true,
+            onboardingCompletedAt: true,
+            gymTrainerId: true
+        }
+    });
+    if (!member || member.gymTrainerId !== profile.id) {
+        throw new HttpError(403, "This member is not assigned to you");
+    }
+    const workoutHistory = await prisma.workoutLog.findMany({
+        where: { userId: memberId },
+        orderBy: { performedAt: "desc" },
+        take: 40
+    });
+    const { gymTrainerId: _gymTrainerId, ...memberFields } = member;
+    return { ...memberFields, workoutHistory };
+}
+export async function assignInitialPlan(trainerUserId, memberId, proposedSessionsJson) {
+    const profile = await prisma.gymTrainer.findFirst({
+        where: { linkedUserId: trainerUserId }
+    });
+    if (!profile) {
+        throw new HttpError(403, "No trainer profile is linked to this account");
+    }
+    const member = await prisma.user.findUnique({
+        where: { id: memberId },
+        select: { gymTrainerId: true }
+    });
+    if (!member || member.gymTrainerId !== profile.id) {
+        throw new HttpError(403, "This member is not assigned to you");
+    }
+    const sessions = parseSessionsJson(proposedSessionsJson);
+    if (!sessions || sessions.length === 0) {
+        throw new HttpError(400, "proposedSessionsJson must be a non-empty JSON array of gym sessions");
+    }
+    const updated = await prisma.user.update({
+        where: { id: memberId },
+        data: { approvedGymPlanJson: proposedSessionsJson },
+        select: { id: true, name: true, approvedGymPlanJson: true }
+    });
+    await createNotification({
+        userId: memberId,
+        type: "GYM",
+        title: "Your workout plan is ready",
+        body: "Your trainer has created your personalized workout plan. Check it out!",
+        link: "/dashboard/gym",
+    });
+    return updated;
+}
+export async function reviewPlanRequest(trainerUserId, requestId, action, trainerComment, editedSessionsJson) {
     const profile = await prisma.gymTrainer.findFirst({
         where: { linkedUserId: trainerUserId }
     });
@@ -81,29 +192,60 @@ export async function reviewPlanRequest(trainerUserId, requestId, action, traine
         throw new HttpError(403, "No trainer profile is linked to this account");
     }
     const request = await prisma.workoutPlanChangeRequest.findUnique({
-        where: { id: requestId },
-        include: { user: true }
+        where: { id: requestId }
     });
     if (!request)
         throw new HttpError(404, "Request not found");
     if (request.gymTrainerId !== profile.id) {
         throw new HttpError(403, "This request belongs to another trainer");
     }
+    return performReview(trainerUserId, request, action, "Your trainer", trainerComment, editedSessionsJson);
+}
+// Admin oversight path: identical review mechanics, but not bound to the
+// owning trainer's linked account. Member-facing wording stays neutral.
+export async function adminReviewPlanRequest(adminUserId, requestId, action, comment, editedSessionsJson) {
+    const request = await prisma.workoutPlanChangeRequest.findUnique({
+        where: { id: requestId }
+    });
+    if (!request)
+        throw new HttpError(404, "Request not found");
+    return performReview(adminUserId, request, action, "The VeganFit team", comment, editedSessionsJson);
+}
+async function performReview(reviewerUserId, request, action, reviewerLabel, trainerComment, editedSessionsJson) {
     if (request.status !== "PENDING") {
         throw new HttpError(400, "Request is already reviewed");
     }
+    const requestId = request.id;
     const now = new Date();
     const comment = trainerComment?.trim() || null;
     if (action === "reject") {
-        return prisma.workoutPlanChangeRequest.update({
+        const rejected = await prisma.workoutPlanChangeRequest.update({
             where: { id: requestId },
             data: {
                 status: "REJECTED",
                 trainerComment: comment,
                 reviewedAt: now,
-                reviewedByUserId: trainerUserId
+                reviewedByUserId: reviewerUserId
             }
         });
+        await createNotification({
+            userId: request.userId,
+            type: "GYM",
+            title: "Plan request declined",
+            body: comment ? `${reviewerLabel} declined your workout plan request: "${comment}"` : `${reviewerLabel} declined your workout plan request.`,
+            link: "/dashboard/gym",
+        });
+        return rejected;
+    }
+    let finalSessionsJson = request.proposedSessionsJson;
+    let wasEdited = false;
+    if (editedSessionsJson != null && editedSessionsJson.trim()) {
+        const parsed = parseSessionsJson(editedSessionsJson);
+        if (!parsed || parsed.length === 0) {
+            throw new HttpError(400, "editedSessionsJson must be a non-empty JSON array of gym sessions");
+        }
+        finalSessionsJson = editedSessionsJson;
+        wasEdited = editedSessionsJson !== request.proposedSessionsJson;
     }
     await prisma.$transaction([
         prisma.workoutPlanChangeRequest.update({
@@ -112,14 +254,24 @@ export async function reviewPlanRequest(trainerUserId, requestId, action, traine
                 status: "APPROVED",
                 trainerComment: comment,
                 reviewedAt: now,
-                reviewedByUserId: trainerUserId
+                reviewedByUserId: reviewerUserId,
+                ...(wasEdited ? { proposedSessionsJson: finalSessionsJson } : {})
             }
         }),
         prisma.user.update({
             where: { id: request.userId },
-            data: { approvedGymPlanJson: request.proposedSessionsJson }
+            data: { approvedGymPlanJson: finalSessionsJson }
         })
     ]);
+    await createNotification({
+        userId: request.userId,
+        type: "GYM",
+        title: wasEdited ? "Workout plan approved (with changes)" : "Workout plan approved",
+        body: wasEdited
+            ? `${reviewerLabel} approved your request, with some adjustments. Check out your updated plan!`
+            : `${reviewerLabel} approved your workout plan. Check it out!`,
+        link: "/dashboard/gym",
+    });
     return prisma.workoutPlanChangeRequest.findUnique({
         where: { id: requestId },
         include: {

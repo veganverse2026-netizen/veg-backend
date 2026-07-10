@@ -6,11 +6,17 @@ import {
   deleteConversation,
   deleteMessage,
   getOrCreateConversation,
+  getSupportContact,
   listInbox,
   listMessages,
   markConversationRead,
   sendMessage
 } from "./dm.service.js";
+
+export async function getSupportContactHandler(_req: AuthedRequest, res: Response) {
+  const data = await getSupportContact();
+  return jsonOk(res, data);
+}
 
 export async function getInbox(req: AuthedRequest, res: Response) {
   const data = await listInbox(req.userId!);

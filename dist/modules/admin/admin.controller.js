@@ -1,7 +1,8 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import { jsonOk } from "../../shared/http/json-response.js";
-import { optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
-import { createGymTrainerForAdmin, deleteGymTrainerForAdmin, getAdminOverview, getPlanRequestByIdForAdmin, getUserGymPlanForAdmin, listGymTrainersForAdmin, listPlanRequestsForAdmin, listUsersForAdmin, patchPlanRequestProposedSessionsForAdmin, patchUserGymPlanForAdmin, postUserGymPlanRowsForAdmin, updateGymTrainerForAdmin, updateUserRoleForAdmin } from "./admin.service.js";
+import { optionalBoolean, optionalFreeStringArray, optionalNumber, optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
+import { assignUserGymTrainerForAdmin, createGymTrainerForAdmin, deleteGymTrainerForAdmin, getAdminOverview, getGymTrainerDetailForAdmin, getPlanRequestByIdForAdmin, getUserGymPlanForAdmin, listGymTrainersForAdmin, listPlanRequestsForAdmin, listUsersForAdmin, patchPlanRequestProposedSessionsForAdmin, patchUserGymPlanForAdmin, postUserGymPlanRowsForAdmin, updateGymTrainerForAdmin, updateUserRoleForAdmin } from "./admin.service.js";
+import { adminReviewPlanRequest } from "../gym/workout-plan-requests.service.js";
 const ROLE_VALUES = ["MEMBER", "GYM_TRAINER", "ADMIN"];
 export async function getOverview(_req, res) {
     const data = await getAdminOverview();
@@ -27,9 +28,31 @@ export async function patchUserRole(req, res) {
     });
     return jsonOk(res, updated);
 }
+export async function patchUserGymTrainer(req, res) {
+    const body = requireObject(req.body);
+    const targetUserId = String(req.params.id ?? "").trim();
+    if (targetUserId.length < 10)
+        throw new HttpError(400, "Invalid id");
+    let trainerId;
+    if (body.trainerId === null) {
+        trainerId = null;
+    }
+    else {
+        trainerId = requireString(body, "trainerId", { trim: true, min: 8 });
+    }
+    const updated = await assignUserGymTrainerForAdmin({ userId: targetUserId, trainerId });
+    return jsonOk(res, updated);
+}
 export async function getGymTrainers(_req, res) {
     const rows = await listGymTrainersForAdmin();
     return jsonOk(res, rows);
+}
+export async function getGymTrainerDetail(req, res) {
+    const id = String(req.params.id ?? "").trim();
+    if (id.length < 8)
+        throw new HttpError(400, "Invalid id");
+    const detail = await getGymTrainerDetailForAdmin(id);
+    return jsonOk(res, detail);
 }
 export async function postGymTrainer(req, res) {
     const body = requireObject(req.body);
@@ -37,6 +60,15 @@ export async function postGymTrainer(req, res) {
     const title = optionalString(body, "title", { max: 200 });
     const bio = optionalString(body, "bio", { max: 4000 });
     const imageUrl = optionalString(body, "imageUrl", { max: 2000 });
+    const certifications = optionalString(body, "certifications", { max: 2000 });
+    const specializations = optionalFreeStringArray(body, "specializations");
+    const yearsExperience = optionalNumber(body, "yearsExperience");
+    const workingHours = optionalString(body, "workingHours", { max: 500 });
+    const languages = optionalFreeStringArray(body, "languages");
+    const contactEmail = optionalString(body, "contactEmail", { max: 200 });
+    const contactPhone = optionalString(body, "contactPhone", { max: 60 });
+    const active = optionalBoolean(body, "active");
+    const maxUsers = optionalNumber(body, "maxUsers");
     let sortOrder;
     if (body.sortOrder !== undefined && body.sortOrder !== null) {
         const n = Number(body.sortOrder);
@@ -51,13 +83,36 @@ export async function postGymTrainer(req, res) {
     else if (body.linkedUserId !== undefined) {
         linkedUserId = requireString(body, "linkedUserId", { trim: true, min: 10, max: 40 });
     }
+    // Optional admin-created login credentials for the trainer account
+    const loginEmail = optionalString(body, "loginEmail", { trim: true, max: 200 });
+    const loginPassword = optionalString(body, "loginPassword", { trim: false, max: 200 });
+    if ((loginEmail == null) !== (loginPassword == null)) {
+        throw new HttpError(400, "Provide both login email and password, or neither");
+    }
+    if (loginEmail != null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+        throw new HttpError(400, "Invalid login email");
+    }
+    if (loginPassword != null && loginPassword.length < 8) {
+        throw new HttpError(400, "Login password must be at least 8 characters");
+    }
     const created = await createGymTrainerForAdmin({
         name,
         title: title == null ? undefined : title,
         bio: bio == null ? undefined : bio,
         imageUrl: imageUrl == null ? undefined : imageUrl,
         sortOrder,
-        linkedUserId
+        certifications: certifications == null ? undefined : certifications,
+        specializations,
+        yearsExperience: yearsExperience == null ? undefined : Math.floor(yearsExperience),
+        workingHours: workingHours == null ? undefined : workingHours,
+        languages,
+        contactEmail: contactEmail == null ? undefined : contactEmail,
+        contactPhone: contactPhone == null ? undefined : contactPhone,
+        active,
+        maxUsers: maxUsers == null ? undefined : Math.floor(maxUsers),
+        linkedUserId,
+        loginEmail,
+        loginPassword
     });
     return jsonOk(res, created);
 }
@@ -70,12 +125,31 @@ export async function patchGymTrainer(req, res) {
     const title = body.title !== undefined ? optionalString(body, "title", { max: 200 }) : undefined;
     const bio = body.bio !== undefined ? optionalString(body, "bio", { max: 4000 }) : undefined;
     const imageUrl = body.imageUrl !== undefined ? optionalString(body, "imageUrl", { max: 2000 }) : undefined;
+    const certifications = body.certifications !== undefined ? optionalString(body, "certifications", { max: 2000 }) : undefined;
+    const specializations = optionalFreeStringArray(body, "specializations");
+    const yearsExperience = body.yearsExperience !== undefined ? optionalNumber(body, "yearsExperience") : undefined;
+    const workingHours = body.workingHours !== undefined ? optionalString(body, "workingHours", { max: 500 }) : undefined;
+    const languages = optionalFreeStringArray(body, "languages");
+    const contactEmail = body.contactEmail !== undefined ? optionalString(body, "contactEmail", { max: 200 }) : undefined;
+    const contactPhone = body.contactPhone !== undefined ? optionalString(body, "contactPhone", { max: 60 }) : undefined;
+    const active = optionalBoolean(body, "active");
+    const approved = optionalBoolean(body, "approved");
     let sortOrder;
     if (body.sortOrder !== undefined && body.sortOrder !== null) {
         const n = Number(body.sortOrder);
         if (!Number.isFinite(n))
             throw new HttpError(400, "Invalid sortOrder");
         sortOrder = Math.floor(n);
+    }
+    let maxUsers;
+    if (body.maxUsers === null) {
+        maxUsers = null;
+    }
+    else if (body.maxUsers !== undefined) {
+        const n = Number(body.maxUsers);
+        if (!Number.isFinite(n) || n < 0)
+            throw new HttpError(400, "Invalid maxUsers");
+        maxUsers = Math.floor(n);
     }
     let linkedUserId;
     if (body.linkedUserId === null) {
@@ -84,13 +158,37 @@ export async function patchGymTrainer(req, res) {
     else if (body.linkedUserId !== undefined) {
         linkedUserId = requireString(body, "linkedUserId", { trim: true, min: 10, max: 40 });
     }
+    // Optional admin-created login credentials for the trainer account
+    const loginEmail = optionalString(body, "loginEmail", { trim: true, max: 200 });
+    const loginPassword = optionalString(body, "loginPassword", { trim: false, max: 200 });
+    if ((loginEmail == null) !== (loginPassword == null)) {
+        throw new HttpError(400, "Provide both login email and password, or neither");
+    }
+    if (loginEmail != null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+        throw new HttpError(400, "Invalid login email");
+    }
+    if (loginPassword != null && loginPassword.length < 8) {
+        throw new HttpError(400, "Login password must be at least 8 characters");
+    }
     const updated = await updateGymTrainerForAdmin(id, {
         ...(name !== undefined ? { name } : {}),
         ...(title !== undefined ? { title } : {}),
         ...(bio !== undefined ? { bio } : {}),
         ...(imageUrl !== undefined ? { imageUrl } : {}),
         ...(sortOrder !== undefined ? { sortOrder } : {}),
-        ...(linkedUserId !== undefined ? { linkedUserId } : {})
+        ...(certifications !== undefined ? { certifications } : {}),
+        ...(specializations !== undefined ? { specializations } : {}),
+        ...(yearsExperience !== undefined ? { yearsExperience: yearsExperience == null ? null : Math.floor(yearsExperience) } : {}),
+        ...(workingHours !== undefined ? { workingHours } : {}),
+        ...(languages !== undefined ? { languages } : {}),
+        ...(maxUsers !== undefined ? { maxUsers } : {}),
+        ...(contactEmail !== undefined ? { contactEmail } : {}),
+        ...(contactPhone !== undefined ? { contactPhone } : {}),
+        ...(active !== undefined ? { active } : {}),
+        ...(approved !== undefined ? { approved } : {}),
+        ...(linkedUserId !== undefined ? { linkedUserId } : {}),
+        ...(loginEmail != null ? { loginEmail } : {}),
+        ...(loginPassword != null ? { loginPassword } : {})
     });
     return jsonOk(res, updated);
 }
@@ -120,6 +218,15 @@ export async function patchPlanRequestSessions(req, res) {
     const body = requireObject(req.body);
     const proposedSessionsJson = requireString(body, "proposedSessionsJson", { min: 2, max: 500000 });
     const data = await patchPlanRequestProposedSessionsForAdmin({ requestId: id, proposedSessionsJson });
+    return jsonOk(res, data);
+}
+export async function postPlanRequestReview(req, res) {
+    const id = String(req.params.id ?? "").trim();
+    const body = requireObject(req.body);
+    const action = requireEnum(body, "action", ["approve", "reject"]);
+    const comment = optionalString(body, "comment", { max: 2000 });
+    const editedSessionsJson = optionalString(body, "editedSessionsJson", { trim: false, max: 500000 });
+    const data = await adminReviewPlanRequest(req.userId, id, action, comment, editedSessionsJson);
     return jsonOk(res, data);
 }
 export async function getUserGymPlan(req, res) {

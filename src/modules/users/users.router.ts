@@ -1,9 +1,27 @@
 import { Router } from "express";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
-import { getMe, getMeStats, getUser, getUsersSearch, patchMe } from "./users.controller.js";
+import { getMe, getMeStats, getUser, getUsersSearch, patchMe, postChangePassword, postDeleteAccount } from "./users.controller.js";
 
 export const usersRouter = Router();
+
+usersRouter.post("/users/me/password", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await postChangePassword(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+usersRouter.post("/users/me/delete-account", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await postDeleteAccount(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
 
 usersRouter.get("/users/search", requireUser, async (req: AuthedRequest, res) => {
   try {

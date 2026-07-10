@@ -29,6 +29,10 @@ export async function completeOnboarding(userId, input) {
             goal: input.goal,
             goalLocked: user.goalLocked || lockGoal,
             onboardingDone: true,
+            ...(user.onboardingCompletedAt ? {} : { onboardingCompletedAt: new Date() }),
+            ...(input.dietaryStyle !== undefined ? { dietaryStyle: input.dietaryStyle } : {}),
+            ...(input.dietaryPreferences !== undefined ? { dietaryPreferences: input.dietaryPreferences } : {}),
+            ...(input.bodyFatPercent !== undefined ? { bodyFatPercent: input.bodyFatPercent } : {}),
             ...(trainerConnect ? { gymTrainer: trainerConnect } : {})
         }
     });

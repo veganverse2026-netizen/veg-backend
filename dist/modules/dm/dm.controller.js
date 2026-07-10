@@ -1,6 +1,10 @@
 import { jsonOk } from "../../shared/http/json-response.js";
 import { requireObject, requireString } from "../../shared/validation/validators.js";
-import { deleteConversation, deleteMessage, getOrCreateConversation, listInbox, listMessages, markConversationRead, sendMessage } from "./dm.service.js";
+import { deleteConversation, deleteMessage, getOrCreateConversation, getSupportContact, listInbox, listMessages, markConversationRead, sendMessage } from "./dm.service.js";
+export async function getSupportContactHandler(_req, res) {
+    const data = await getSupportContact();
+    return jsonOk(res, data);
+}
 export async function getInbox(req, res) {
     const data = await listInbox(req.userId);
     return jsonOk(res, data);

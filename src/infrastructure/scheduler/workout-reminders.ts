@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma.js";
 import { createNotification } from "../../modules/notifications/notifications.service.js";
+import { resolveNotificationPrefs } from "../../shared/constants/settings.js";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const REMINDER_TITLE = "Time for today's workout!";
@@ -38,12 +39,13 @@ export async function runWorkoutReminders(now: Date = new Date()) {
       gymTrainerId: { not: null },
       approvedGymPlanJson: { not: null }
     },
-    select: { id: true, name: true, approvedGymPlanJson: true }
+    select: { id: true, name: true, approvedGymPlanJson: true, notificationPrefs: true }
   });
 
   let remindedCount = 0;
   for (const member of candidates) {
     if (!member.approvedGymPlanJson) continue;
+    if (!resolveNotificationPrefs(member.notificationPrefs).workoutReminders) continue;
     if (isRestDayInPlan(member.approvedGymPlanJson, todayLabel)) continue;
 
     const [loggedToday, alreadyRemindedToday] = await Promise.all([

@@ -189,6 +189,38 @@ export async function listGymTrainersForAdmin() {
   });
 }
 
+// Linking a login account to a trainer profile implies that account IS a
+// trainer — promote MEMBER accounts automatically so the admin doesn't have
+// to remember the separate role step. ADMIN accounts are left untouched.
+async function promoteLinkedUserToTrainer(linkedUserId: string) {
+  await prisma.user.updateMany({
+    where: { id: linkedUserId, role: "MEMBER" },
+    data: { role: "GYM_TRAINER" }
+  });
+}
+
+// Admin-created trainer login: makes a fresh GYM_TRAINER account the trainer
+// signs into the admin panel with. Existing emails must be linked via the
+// account picker instead, so we never silently take over someone's account.
+async function createTrainerLoginAccount(name: string, email: string, password: string) {
+  const normalized = email.toLowerCase().trim();
+  const existing = await prisma.user.findUnique({ where: { email: normalized }, select: { id: true } });
+  if (existing) {
+    throw new HttpError(400, "A user with that email already exists — pick them in the account search instead");
+  }
+  const { hash } = await import("bcryptjs");
+  return prisma.user.create({
+    data: {
+      email: normalized,
+      name,
+      role: "GYM_TRAINER",
+      onboardingDone: true,
+      passwordHash: await hash(password, 10)
+    },
+    select: { id: true }
+  });
+}
+
 export async function createGymTrainerForAdmin(input: {
   name: string;
   title?: string | null;
@@ -205,12 +237,24 @@ export async function createGymTrainerForAdmin(input: {
   active?: boolean;
   maxUsers?: number | null;
   linkedUserId?: string | null;
+  loginEmail?: string | null;
+  loginPassword?: string | null;
 }) {
+  if (input.linkedUserId && input.loginEmail) {
+    throw new HttpError(400, "Either link an existing account or create a new login — not both");
+  }
+
+  if (input.loginEmail && input.loginPassword) {
+    const account = await createTrainerLoginAccount(input.name, input.loginEmail, input.loginPassword);
+    input = { ...input, linkedUserId: account.id };
+  }
+
   if (input.linkedUserId) {
     const u = await prisma.user.findUnique({ where: { id: input.linkedUserId }, select: { id: true } });
     if (!u) throw new HttpError(400, "Linked user not found");
     const clash = await prisma.gymTrainer.findUnique({ where: { linkedUserId: input.linkedUserId } });
     if (clash) throw new HttpError(400, "That user is already linked to a trainer profile");
+    await promoteLinkedUserToTrainer(input.linkedUserId);
   }
 
   return prisma.gymTrainer.create({
@@ -254,10 +298,23 @@ export async function updateGymTrainerForAdmin(
     approved?: boolean;
     maxUsers?: number | null;
     linkedUserId?: string | null;
+    loginEmail?: string | null;
+    loginPassword?: string | null;
   }
 ) {
   const existing = await prisma.gymTrainer.findUnique({ where: { id } });
   if (!existing) throw new HttpError(404, "Trainer not found");
+
+  if (input.loginEmail && input.loginPassword) {
+    if (input.linkedUserId) {
+      throw new HttpError(400, "Either link an existing account or create a new login — not both");
+    }
+    if (existing.linkedUserId) {
+      throw new HttpError(400, "This trainer already has a login account — unlink it first");
+    }
+    const account = await createTrainerLoginAccount(input.name ?? existing.name, input.loginEmail, input.loginPassword);
+    input = { ...input, linkedUserId: account.id };
+  }
 
   if (input.linkedUserId !== undefined && input.linkedUserId !== null) {
     const u = await prisma.user.findUnique({ where: { id: input.linkedUserId }, select: { id: true } });
@@ -266,6 +323,7 @@ export async function updateGymTrainerForAdmin(
       where: { linkedUserId: input.linkedUserId, NOT: { id } }
     });
     if (clash) throw new HttpError(400, "That user is already linked to another trainer profile");
+    await promoteLinkedUserToTrainer(input.linkedUserId);
   }
 
   const wasApproved = existing.approved;

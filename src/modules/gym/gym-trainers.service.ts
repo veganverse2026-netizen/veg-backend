@@ -2,7 +2,10 @@ import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
 export async function listGymTrainers() {
+  // Public catalog shown to members — only trainers the admin has approved
+  // and not deactivated are selectable.
   return prisma.gymTrainer.findMany({
+    where: { approved: true, active: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,

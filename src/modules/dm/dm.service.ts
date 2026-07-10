@@ -9,15 +9,34 @@ function orderedPair(a: string, b: string) {
   return a < b ? { userAId: a, userBId: b } : { userAId: b, userBId: a };
 }
 
-// Scoped narrowly to the trainer<->assigned-member relationship, not all DMs
-// in general — bridges the real-time chat into the Notification center for
-// that specific pairing only.
-async function notifyIfTrainerMemberPair(senderId: string, recipientId: string, content: string) {
+// Scoped to relationships that have a real chat surface: trainer<->their
+// assigned member, and admin<->trainer (support channel in the admin panel).
+// Other DMs don't notify — bridges the chat into the Notification center
+// only where the recipient has somewhere to read and reply.
+async function notifyDmRecipient(senderId: string, recipientId: string, content: string) {
   const [sender, recipient] = await Promise.all([
     prisma.user.findUnique({ where: { id: senderId }, select: { name: true, role: true, gymTrainerId: true } }),
     prisma.user.findUnique({ where: { id: recipientId }, select: { role: true, gymTrainerId: true } })
   ]);
   if (!sender || !recipient) return;
+
+  const preview = `${sender.name ?? "Someone"}: "${content.slice(0, 80)}"`;
+
+  // Admin <-> trainer support channel (both sides live in the admin panel)
+  if (sender.role === "ADMIN" && recipient.role === "GYM_TRAINER") {
+    await createNotification({
+      userId: recipientId, type: "GYM", title: "New message from the VeganFit team",
+      body: preview, link: "/dashboard/gym-trainer/messages",
+    });
+    return;
+  }
+  if (sender.role === "GYM_TRAINER" && recipient.role === "ADMIN") {
+    await createNotification({
+      userId: recipientId, type: "GYM", title: "New message from a trainer",
+      body: preview, link: "/dashboard/messages",
+    });
+    return;
+  }
 
   let isTrainerMemberPair = false;
   if (sender.role === "GYM_TRAINER" && recipient.gymTrainerId) {
@@ -33,9 +52,21 @@ async function notifyIfTrainerMemberPair(senderId: string, recipientId: string, 
     userId: recipientId,
     type: "GYM",
     title: recipient.role === "GYM_TRAINER" ? "New message from your member" : "New message from your trainer",
-    body: `${sender.name ?? "Someone"}: "${content.slice(0, 80)}"`,
+    body: preview,
     link: recipient.role === "GYM_TRAINER" ? "/dashboard/gym-trainer" : "/dashboard/gym",
   });
+}
+
+// Who a trainer should message for help — the primary admin account. Lets
+// the trainer portal open a support conversation without knowing admin ids.
+export async function getSupportContact() {
+  const admin = await prisma.user.findFirst({
+    where: { role: "ADMIN" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true }
+  });
+  if (!admin) throw new HttpError(404, "No admin account exists");
+  return admin;
 }
 
 export async function listInbox(userId: string) {
@@ -100,7 +131,7 @@ export async function sendMessage(userId: string, conversationId: string, conten
   }
 
   const recipientId = convo.userAId === userId ? convo.userBId : convo.userAId;
-  await notifyIfTrainerMemberPair(userId, recipientId, content);
+  await notifyDmRecipient(userId, recipientId, content);
 
   return msg;
 }

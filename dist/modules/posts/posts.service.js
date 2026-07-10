@@ -1,21 +1,53 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { getIo } from "../../infrastructure/realtime/socket.js";
 import { HttpError } from "../../shared/errors/http-error.js";
-export async function getFeed() {
-    return await prisma.post.findMany({
+import { createNotification } from "../notifications/notifications.service.js";
+const MAX_FEED_POSTS = 50;
+const flatCommentInclude = {
+    user: { select: { name: true } },
+    likes: true
+};
+// Comments can be replied to at any depth. Prisma can't express an
+// arbitrary-depth recursive `include`, so we fetch every comment for the
+// post(s) flat (ordered oldest-first) and reassemble the reply tree here.
+function buildCommentTree(flat) {
+    const byId = new Map();
+    for (const c of flat)
+        byId.set(c.id, { ...c, replies: [] });
+    const roots = [];
+    for (const c of byId.values()) {
+        if (c.parentId) {
+            const parent = byId.get(c.parentId);
+            // Parent should always be present since it belongs to the same post,
+            // but fall back to treating it as a root rather than dropping it.
+            if (parent)
+                parent.replies.push(c);
+            else
+                roots.push(c);
+        }
+        else {
+            roots.push(c);
+        }
+    }
+    return roots;
+}
+export async function getFeed(limit = MAX_FEED_POSTS) {
+    const posts = await prisma.post.findMany({
+        take: Math.max(1, Math.min(MAX_FEED_POSTS, limit)),
         include: {
             user: { select: { id: true, name: true, goal: true } },
             comments: {
                 orderBy: { createdAt: "asc" },
-                include: { user: { select: { name: true } } },
+                include: flatCommentInclude
             },
             likes: true
         },
         orderBy: { createdAt: "desc" }
     });
+    return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments) }));
 }
 export async function createPost(userId, input) {
-    await prisma.post.create({
+    const post = await prisma.post.create({
         data: {
             userId,
             content: input.content,
@@ -23,6 +55,11 @@ export async function createPost(userId, input) {
             // Prisma client type may be resolved from a different workspace; keep runtime correct.
             type: input.type,
             imageUrl: (input.imageUrl ?? null)
+        },
+        include: {
+            user: { select: { id: true, name: true, goal: true } },
+            comments: { orderBy: { createdAt: "asc" }, include: flatCommentInclude },
+            likes: true
         }
     });
     try {
@@ -31,13 +68,56 @@ export async function createPost(userId, input) {
     catch {
         // io may be unavailable in some runtimes
     }
+    return { ...post, comments: buildCommentTree(post.comments) };
 }
 export async function addComment(userId, input) {
-    await prisma.comment.create({ data: { userId, postId: input.postId, content: input.content } });
+    if (input.parentId) {
+        const parent = await prisma.comment.findUnique({ where: { id: input.parentId }, select: { postId: true } });
+        if (!parent || parent.postId !== input.postId)
+            throw new HttpError(400, "Invalid parent comment");
+    }
+    const comment = await prisma.comment.create({
+        data: { userId, postId: input.postId, content: input.content, parentId: input.parentId ?? null },
+        include: { user: { select: { name: true } }, likes: true }
+    });
     try {
-        getIo().to(`post:${input.postId}`).to("feed").emit("post:update", { postId: input.postId, kind: "comment:created" });
+        getIo().to(`post:${input.postId}`).to("feed").emit("post:update", {
+            postId: input.postId,
+            kind: input.parentId ? "reply:created" : "comment:created"
+        });
     }
     catch { }
+    const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { userId: true } });
+    if (post && post.userId !== userId) {
+        await createNotification({
+            userId: post.userId,
+            type: "COMMUNITY",
+            title: input.parentId ? "New reply on your comment" : "New comment on your post",
+            body: `${comment.user.name ?? "Someone"} ${input.parentId ? "replied to your comment" : "commented on your post"}: "${input.content.slice(0, 80)}"`,
+            link: "/dashboard/community",
+        });
+    }
+    return comment;
+}
+export async function toggleCommentLike(userId, commentId) {
+    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { postId: true } });
+    if (!comment)
+        throw new HttpError(404, "Comment not found");
+    const existing = await prisma.commentLike.findUnique({ where: { userId_commentId: { userId, commentId } } });
+    if (existing) {
+        await prisma.commentLike.delete({ where: { userId_commentId: { userId, commentId } } });
+        try {
+            getIo().to(`post:${comment.postId}`).to("feed").emit("post:update", { postId: comment.postId, kind: "comment-like:changed" });
+        }
+        catch { }
+        return { liked: false };
+    }
+    await prisma.commentLike.create({ data: { userId, commentId } });
+    try {
+        getIo().to(`post:${comment.postId}`).to("feed").emit("post:update", { postId: comment.postId, kind: "comment-like:changed" });
+    }
+    catch { }
+    return { liked: true };
 }
 export async function toggleLike(userId, postId) {
     const existing = await prisma.postLike.findUnique({ where: { userId_postId: { userId, postId } } });
@@ -54,7 +134,105 @@ export async function toggleLike(userId, postId) {
         getIo().to(`post:${postId}`).to("feed").emit("post:update", { postId, kind: "like:changed" });
     }
     catch { }
+    const [post, liker] = await Promise.all([
+        prisma.post.findUnique({ where: { id: postId }, select: { userId: true } }),
+        prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    ]);
+    if (post && post.userId !== userId) {
+        await createNotification({
+            userId: post.userId,
+            type: "COMMUNITY",
+            title: "New like on your post",
+            body: `${liker?.name ?? "Someone"} liked your post.`,
+            link: "/dashboard/community",
+        });
+    }
     return { liked: true };
+}
+export async function deletePost(userId, postId) {
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { userId: true } });
+    // 404 (not 403) for someone else's post: don't leak that the id exists.
+    if (!post || post.userId !== userId)
+        throw new HttpError(404, "Post not found");
+    // Comments, likes, and bookmarks cascade via the schema relations.
+    await prisma.post.delete({ where: { id: postId } });
+    try {
+        getIo().to("feed").emit("feed:update", { kind: "post:deleted" });
+    }
+    catch { }
+    return { deleted: true };
+}
+export async function toggleBookmark(userId, postId) {
+    const existing = await prisma.postBookmark.findUnique({ where: { userId_postId: { userId, postId } } });
+    if (existing) {
+        await prisma.postBookmark.delete({ where: { userId_postId: { userId, postId } } });
+        return { bookmarked: false };
+    }
+    await prisma.postBookmark.create({ data: { userId, postId } });
+    return { bookmarked: true };
+}
+export async function listBookmarkedPosts(userId) {
+    const posts = await prisma.post.findMany({
+        where: { bookmarks: { some: { userId } } },
+        include: {
+            user: { select: { id: true, name: true, goal: true } },
+            comments: {
+                orderBy: { createdAt: "asc" },
+                include: flatCommentInclude
+            },
+            likes: true
+        },
+        orderBy: { createdAt: "desc" }
+    });
+    return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments) }));
+}
+export async function listDrafts(userId) {
+    return prisma.postDraft.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" }
+    });
+}
+export async function saveDraft(userId, input) {
+    return prisma.postDraft.create({
+        data: {
+            userId,
+            content: input.content,
+            type: input.type,
+            imageUrl: input.imageUrl ?? null
+        }
+    });
+}
+export async function deleteDraft(userId, draftId) {
+    const draft = await prisma.postDraft.findUnique({ where: { id: draftId }, select: { userId: true } });
+    if (!draft || draft.userId !== userId)
+        throw new HttpError(404, "Draft not found");
+    await prisma.postDraft.delete({ where: { id: draftId } });
+    return { deleted: true };
+}
+export async function getMyCommunityStats(userId) {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    // "Received" counts exclude the user's own likes/comments on their own content.
+    const notMe = { not: userId };
+    const [postCount, postsThisWeek, postLikesReceived, postLikesThisWeek, commentLikesReceived, commentLikesThisWeek, commentsReceived, commentsThisWeek, user] = await Promise.all([
+        prisma.post.count({ where: { userId } }),
+        prisma.post.count({ where: { userId, createdAt: { gte: weekAgo } } }),
+        prisma.postLike.count({ where: { post: { userId }, userId: notMe } }),
+        prisma.postLike.count({ where: { post: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+        prisma.commentLike.count({ where: { comment: { userId }, userId: notMe } }),
+        prisma.commentLike.count({ where: { comment: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+        prisma.comment.count({ where: { post: { userId }, userId: notMe } }),
+        prisma.comment.count({ where: { post: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+        prisma.user.findUnique({ where: { id: userId }, select: { streakCount: true } })
+    ]);
+    return {
+        posts: postCount,
+        postsThisWeek,
+        likesReceived: postLikesReceived + commentLikesReceived,
+        likesThisWeek: postLikesThisWeek + commentLikesThisWeek,
+        commentsReceived,
+        commentsThisWeek,
+        dayStreak: user?.streakCount ?? 0
+    };
 }
 export async function reportPost(input) {
     const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { id: true } });
@@ -70,11 +248,11 @@ export async function reportPost(input) {
 export async function acceptAnswer(userId, input) {
     const post = await prisma.post.findUnique({ where: { id: input.postId }, select: { id: true, userId: true } });
     if (!post || post.userId !== userId) {
-        throw new Error("Not allowed");
+        throw new HttpError(403, "Not allowed");
     }
     const comment = await prisma.comment.findUnique({ where: { id: input.commentId }, select: { id: true, postId: true } });
     if (!comment || comment.postId !== input.postId) {
-        throw new Error("Invalid comment");
+        throw new HttpError(400, "Invalid comment");
     }
     const updated = await prisma.post.update({ where: { id: input.postId }, data: { acceptedCommentId: input.commentId } });
     try {

@@ -11,10 +11,13 @@ function dateKey(d: Date) {
 }
 
 export async function listTrackers(userId: string) {
+  // Newest first — with asc+take this used to return the oldest 14 rows
+  // forever, so fresh logs vanished once a user had two weeks of history.
+  // 180 rows comfortably covers the Progress page's 12-week heatmap.
   return await prisma.tracker.findMany({
     where: { userId },
-    orderBy: { date: "asc" },
-    take: 14
+    orderBy: { date: "desc" },
+    take: 180
   });
 }
 

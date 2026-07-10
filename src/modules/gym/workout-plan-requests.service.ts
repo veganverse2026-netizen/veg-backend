@@ -226,17 +226,45 @@ export async function reviewPlanRequest(
   }
 
   const request = await prisma.workoutPlanChangeRequest.findUnique({
-    where: { id: requestId },
-    include: { user: true }
+    where: { id: requestId }
   });
   if (!request) throw new HttpError(404, "Request not found");
   if (request.gymTrainerId !== profile.id) {
     throw new HttpError(403, "This request belongs to another trainer");
   }
+
+  return performReview(trainerUserId, request, action, "Your trainer", trainerComment, editedSessionsJson);
+}
+
+// Admin oversight path: identical review mechanics, but not bound to the
+// owning trainer's linked account. Member-facing wording stays neutral.
+export async function adminReviewPlanRequest(
+  adminUserId: string,
+  requestId: string,
+  action: "approve" | "reject",
+  comment?: string | null,
+  editedSessionsJson?: string | null
+) {
+  const request = await prisma.workoutPlanChangeRequest.findUnique({
+    where: { id: requestId }
+  });
+  if (!request) throw new HttpError(404, "Request not found");
+  return performReview(adminUserId, request, action, "The VeganFit team", comment, editedSessionsJson);
+}
+
+async function performReview(
+  reviewerUserId: string,
+  request: { id: string; userId: string; status: string; proposedSessionsJson: string },
+  action: "approve" | "reject",
+  reviewerLabel: string,
+  trainerComment?: string | null,
+  editedSessionsJson?: string | null
+) {
   if (request.status !== "PENDING") {
     throw new HttpError(400, "Request is already reviewed");
   }
 
+  const requestId = request.id;
   const now = new Date();
   const comment = trainerComment?.trim() || null;
 
@@ -247,14 +275,14 @@ export async function reviewPlanRequest(
         status: "REJECTED",
         trainerComment: comment,
         reviewedAt: now,
-        reviewedByUserId: trainerUserId
+        reviewedByUserId: reviewerUserId
       }
     });
     await createNotification({
       userId: request.userId,
       type: "GYM",
       title: "Plan request declined",
-      body: comment ? `Your trainer declined your workout plan request: "${comment}"` : "Your trainer declined your workout plan request.",
+      body: comment ? `${reviewerLabel} declined your workout plan request: "${comment}"` : `${reviewerLabel} declined your workout plan request.`,
       link: "/dashboard/gym",
     });
     return rejected;
@@ -278,7 +306,7 @@ export async function reviewPlanRequest(
         status: "APPROVED",
         trainerComment: comment,
         reviewedAt: now,
-        reviewedByUserId: trainerUserId,
+        reviewedByUserId: reviewerUserId,
         ...(wasEdited ? { proposedSessionsJson: finalSessionsJson } : {})
       }
     }),
@@ -293,8 +321,8 @@ export async function reviewPlanRequest(
     type: "GYM",
     title: wasEdited ? "Workout plan approved (with changes)" : "Workout plan approved",
     body: wasEdited
-      ? "Your trainer approved your request, with some adjustments. Check out your updated plan!"
-      : "Your trainer approved your workout plan. Check it out!",
+      ? `${reviewerLabel} approved your request, with some adjustments. Check out your updated plan!`
+      : `${reviewerLabel} approved your workout plan. Check it out!`,
     link: "/dashboard/gym",
   });
 

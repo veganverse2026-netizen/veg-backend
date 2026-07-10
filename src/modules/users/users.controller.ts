@@ -12,7 +12,22 @@ import {
   requireString
 } from "../../shared/validation/validators.js";
 import { DIETARY_PREFERENCES, DIETARY_STYLES } from "../../shared/constants/dietary.js";
-import { getPublicUserById, getUserById, getUserStats, searchUsers, updateUserProfile } from "./users.service.js";
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  LANGUAGES,
+  NOTIFICATION_PREF_KEYS,
+  UNIT_PREFERENCES,
+  type NotificationPrefs
+} from "../../shared/constants/settings.js";
+import {
+  changeUserPassword,
+  deleteUserAccount,
+  getPublicUserById,
+  getUserById,
+  getUserStats,
+  searchUsers,
+  updateUserProfile
+} from "./users.service.js";
 
 export async function getMe(req: AuthedRequest, res: Response) {
   const user = await getUserById(req.userId!);
@@ -89,6 +104,29 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     bodyFatPercent = v;
   }
 
+  let unitPreference: "METRIC" | "IMPERIAL" | undefined;
+  if (body.unitPreference !== undefined && body.unitPreference !== null) {
+    unitPreference = requireEnum(body, "unitPreference", UNIT_PREFERENCES);
+  }
+
+  let language: string | undefined;
+  if (body.language !== undefined && body.language !== null) {
+    language = requireEnum(body, "language", LANGUAGES);
+  }
+
+  let notificationPrefs: NotificationPrefs | undefined;
+  if (body.notificationPrefs !== undefined && body.notificationPrefs !== null) {
+    const raw = requireObject(body.notificationPrefs, "Invalid notificationPrefs");
+    const prefs = { ...DEFAULT_NOTIFICATION_PREFS };
+    for (const key of NOTIFICATION_PREF_KEYS) {
+      if (raw[key] !== undefined && typeof raw[key] !== "boolean") {
+        throw new HttpError(400, "Invalid notificationPrefs");
+      }
+      if (typeof raw[key] === "boolean") prefs[key] = raw[key];
+    }
+    notificationPrefs = prefs;
+  }
+
   const updated = await updateUserProfile(req.userId!, {
     name: name == null ? undefined : name,
     email: email == null ? undefined : email,
@@ -102,10 +140,28 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     ...(goal !== undefined ? { goal } : {}),
     ...(dietaryStyle !== undefined ? { dietaryStyle } : {}),
     ...(dietaryPreferences !== undefined ? { dietaryPreferences } : {}),
-    ...(bodyFatPercent !== undefined ? { bodyFatPercent } : {})
+    ...(bodyFatPercent !== undefined ? { bodyFatPercent } : {}),
+    ...(unitPreference !== undefined ? { unitPreference } : {}),
+    ...(language !== undefined ? { language } : {}),
+    ...(notificationPrefs !== undefined ? { notificationPrefs } : {})
   });
 
   return jsonOk(res, updated);
+}
+
+export async function postChangePassword(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const newPassword = requireString(body, "newPassword", { min: 8, max: 128 }, "Password must be at least 8 characters");
+  const currentPassword = optionalString(body, "currentPassword", { max: 128 });
+  const result = await changeUserPassword(req.userId!, { currentPassword, newPassword });
+  return jsonOk(res, result);
+}
+
+export async function postDeleteAccount(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const confirmEmail = requireString(body, "confirmEmail", { trim: true, min: 3, max: 320 }, "Type your account email to confirm");
+  const result = await deleteUserAccount(req.userId!, confirmEmail);
+  return jsonOk(res, result);
 }
 
 export async function getMeStats(req: AuthedRequest, res: Response) {

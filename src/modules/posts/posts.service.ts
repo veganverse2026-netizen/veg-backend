@@ -161,6 +161,19 @@ export async function toggleLike(userId: string, postId: string) {
   return { liked: true };
 }
 
+export async function deletePost(userId: string, postId: string) {
+  const post = await prisma.post.findUnique({ where: { id: postId }, select: { userId: true } });
+  // 404 (not 403) for someone else's post: don't leak that the id exists.
+  if (!post || post.userId !== userId) throw new HttpError(404, "Post not found");
+
+  // Comments, likes, and bookmarks cascade via the schema relations.
+  await prisma.post.delete({ where: { id: postId } });
+  try {
+    getIo().to("feed").emit("feed:update", { kind: "post:deleted" });
+  } catch {}
+  return { deleted: true };
+}
+
 export async function toggleBookmark(userId: string, postId: string) {
   const existing = await prisma.postBookmark.findUnique({ where: { userId_postId: { userId, postId } } });
   if (existing) {
@@ -186,6 +199,72 @@ export async function listBookmarkedPosts(userId: string) {
   });
 
   return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) }));
+}
+
+export async function listDrafts(userId: string) {
+  return prisma.postDraft.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
+export async function saveDraft(
+  userId: string,
+  input: { content: string; type: "QUESTION" | "WIN" | "MEAL_IDEA" | "NEED_SUPPORT"; imageUrl?: string | null }
+) {
+  return prisma.postDraft.create({
+    data: {
+      userId,
+      content: input.content,
+      type: input.type as any,
+      imageUrl: input.imageUrl ?? null
+    }
+  });
+}
+
+export async function deleteDraft(userId: string, draftId: string) {
+  const draft = await prisma.postDraft.findUnique({ where: { id: draftId }, select: { userId: true } });
+  if (!draft || draft.userId !== userId) throw new HttpError(404, "Draft not found");
+  await prisma.postDraft.delete({ where: { id: draftId } });
+  return { deleted: true };
+}
+
+export async function getMyCommunityStats(userId: string) {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // "Received" counts exclude the user's own likes/comments on their own content.
+  const notMe = { not: userId };
+
+  const [
+    postCount,
+    postsThisWeek,
+    postLikesReceived,
+    postLikesThisWeek,
+    commentLikesReceived,
+    commentLikesThisWeek,
+    commentsReceived,
+    commentsThisWeek,
+    user
+  ] = await Promise.all([
+    prisma.post.count({ where: { userId } }),
+    prisma.post.count({ where: { userId, createdAt: { gte: weekAgo } } }),
+    prisma.postLike.count({ where: { post: { userId }, userId: notMe } }),
+    prisma.postLike.count({ where: { post: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+    prisma.commentLike.count({ where: { comment: { userId }, userId: notMe } }),
+    prisma.commentLike.count({ where: { comment: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+    prisma.comment.count({ where: { post: { userId }, userId: notMe } }),
+    prisma.comment.count({ where: { post: { userId }, userId: notMe, createdAt: { gte: weekAgo } } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { streakCount: true } })
+  ]);
+
+  return {
+    posts: postCount,
+    postsThisWeek,
+    likesReceived: postLikesReceived + commentLikesReceived,
+    likesThisWeek: postLikesThisWeek + commentLikesThisWeek,
+    commentsReceived,
+    commentsThisWeek,
+    dayStreak: user?.streakCount ?? 0
+  };
 }
 
 export async function reportPost(input: { reporterId: string; postId: string; reason: string }) {

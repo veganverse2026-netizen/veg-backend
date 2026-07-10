@@ -6,7 +6,12 @@ import { optionalString, requireEnum, requireObject, requireString } from "../..
 import {
   addComment,
   createPost,
+  deleteDraft,
+  deletePost,
   getFeed,
+  getMyCommunityStats,
+  listDrafts,
+  saveDraft,
   toggleLike,
   toggleCommentLike,
   toggleBookmark,
@@ -77,6 +82,40 @@ export async function postAcceptAnswer(req: AuthedRequest, res: Response) {
   const commentId = requireString(body, "commentId", { trim: true, min: 8 });
   const updated = await acceptAnswer(req.userId!, { postId, commentId });
   return jsonOk(res, updated);
+}
+
+export async function getMyStats(req: AuthedRequest, res: Response) {
+  const stats = await getMyCommunityStats(req.userId!);
+  return jsonOk(res, stats);
+}
+
+export async function postDelete(req: AuthedRequest, res: Response) {
+  const postId = String(req.params.id ?? "").trim();
+  const result = await deletePost(req.userId!, postId);
+  return jsonOk(res, result);
+}
+
+export async function getDrafts(req: AuthedRequest, res: Response) {
+  const drafts = await listDrafts(req.userId!);
+  return jsonOk(res, drafts);
+}
+
+export async function postDraftCreate(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const imageUrl = optionalString(body, "imageUrl", { trim: true, max: 2000 }) ?? null;
+  // Like posts, a draft can be image-only; otherwise it needs some text.
+  const content = imageUrl
+    ? optionalString(body, "content", { trim: true, max: 2200 }) ?? ""
+    : requireString(body, "content", { trim: true, min: 1, max: 2200 });
+  const type = requireEnum(body, "type", ["QUESTION", "WIN", "MEAL_IDEA", "NEED_SUPPORT"] as const);
+  const draft = await saveDraft(req.userId!, { content, type, imageUrl });
+  return jsonOk(res, draft, 201);
+}
+
+export async function draftDelete(req: AuthedRequest, res: Response) {
+  const draftId = String(req.params.id ?? "").trim();
+  const result = await deleteDraft(req.userId!, draftId);
+  return jsonOk(res, result);
 }
 
 export async function postReport(req: AuthedRequest, res: Response) {

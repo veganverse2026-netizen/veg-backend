@@ -2,8 +2,13 @@ import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { asyncHandler } from "../../shared/http/async-handler.js";
 import {
+  draftDelete,
   getBookmarkedPosts,
+  getDrafts,
+  getMyStats,
   getPostsFeed,
+  postDelete,
+  postDraftCreate,
   postAcceptAnswer,
   postBookmark,
   postComment,
@@ -36,6 +41,17 @@ postsRouter.post("/posts/comment/like", requireUserMiddleware, asyncHandler(post
 postsRouter.post("/posts/bookmark", requireUserMiddleware, asyncHandler(postBookmark));
 
 postsRouter.get("/posts/bookmarks", requireUserMiddleware, asyncHandler(getBookmarkedPosts));
+
+postsRouter.get("/posts/stats/me", requireUserMiddleware, asyncHandler(getMyStats));
+
+postsRouter.get("/posts/drafts", requireUserMiddleware, asyncHandler(getDrafts));
+
+postsRouter.post("/posts/drafts", requireUserMiddleware, asyncHandler(postDraftCreate));
+
+postsRouter.delete("/posts/drafts/:id", requireUserMiddleware, asyncHandler(draftDelete));
+
+// Registered after /posts/drafts/:id so the drafts route wins for that path shape.
+postsRouter.delete("/posts/:id", requireUserMiddleware, asyncHandler(postDelete));
 
 postsRouter.post("/posts/accept-answer", requireUserMiddleware, asyncHandler(postAcceptAnswer));
 

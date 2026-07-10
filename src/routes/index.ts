@@ -20,12 +20,15 @@ import { productsRouter } from "../modules/products/products.router.js";
 import { ordersRouter } from "../modules/orders/orders.router.js";
 import { notificationsRouter } from "../modules/notifications/notifications.router.js";
 import { challengesRouter } from "../modules/challenges/challenges.router.js";
+import { mealPlansRouter } from "../modules/meal-plans/meal-plans.router.js";
+import { addressesRouter } from "../modules/addresses/addresses.router.js";
 
 export const apiRouter = Router();
 
 apiRouter.use(authRouter);
 apiRouter.use(profileTargetsRouter);
 apiRouter.use(trackerRouter);
+apiRouter.use(mealPlansRouter);
 apiRouter.use(recipesRouter);
 apiRouter.use(postsRouter);
 apiRouter.use(followRouter);
@@ -34,6 +37,7 @@ apiRouter.use(onboardingRouter);
 apiRouter.use(cheatMealsRouter);
 apiRouter.use(vegabotRouter);
 apiRouter.use(usersRouter);
+apiRouter.use(addressesRouter);
 apiRouter.use(uploadsRouter);
 apiRouter.use(dmRouter);
 apiRouter.use(catalogRouter);

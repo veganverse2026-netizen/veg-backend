@@ -57,6 +57,11 @@ enum UserRole {
   ADMIN
 }
 
+enum UnitPreference {
+  METRIC
+  IMPERIAL
+}
+
 enum PlanChangeStatus {
   PENDING
   APPROVED
@@ -102,6 +107,10 @@ model User {
   onboardingDone         Boolean        @default(false)
   onboardingCompletedAt  DateTime?
   streakCount            Int            @default(0)
+  mealPlanJson           String?        @db.Text
+  unitPreference         UnitPreference @default(METRIC)
+  language               String         @default("en")
+  notificationPrefs      Json?
   role                   UserRole       @default(MEMBER)
   gymTrainerId           String?
   approvedGymPlanJson    String?        @db.Text
@@ -119,6 +128,10 @@ model User {
   savedRecipes           SavedRecipe[]
   likes                  PostLike[]
   postBookmarks          PostBookmark[]
+  postDrafts             PostDraft[]
+  mealLogs               MealLog[]
+  mealPlanRequests       MealPlanChangeRequest[] @relation("MemberMealRequests")
+  favoriteMeals          FavoriteMeal[]
   commentLikes           CommentLike[]
   challengesCreated      Challenge[]
   challengeParticipation ChallengeParticipant[]
@@ -163,6 +176,7 @@ model GymTrainer {
   linkedUser     User?    @relation("TrainerLinkedAccount", fields: [linkedUserId], references: [id], onDelete: SetNull)
   assignedUsers  User[]   @relation("AssignedTrainer")
   planRequests   WorkoutPlanChangeRequest[]
+  mealPlanRequests MealPlanChangeRequest[]
   missedWorkoutReports MissedWorkoutReport[]
 
   @@index([sortOrder])
@@ -369,6 +383,76 @@ model PostBookmark {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId])
+}
+
+model PostDraft {
+  id        String   @id @default(cuid())
+  userId    String
+  content   String
+  type      PostType @default(QUESTION)
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model MealLog {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @default(now())
+  slot      String
+  name      String
+  quantity  String?
+  status    String   @default("completed")
+  calories  Int      @default(0)
+  protein   Float    @default(0)
+  carbs     Float    @default(0)
+  fat       Float    @default(0)
+  fiber     Float    @default(0)
+  waterMl   Int      @default(0)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model MealPlanChangeRequest {
+  id               String           @id @default(cuid())
+  userId           String
+  gymTrainerId     String
+  status           PlanChangeStatus @default(PENDING)
+  requestType      String           @default("FULL_PLAN")
+  reason           String?
+  contextJson      String?          @db.Text
+  wasModified      Boolean          @default(false)
+  memberNote       String?
+  proposedPlanJson String           @db.Text
+  trainerComment   String?
+  voiceNoteUrl     String?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user       User       @relation("MemberMealRequests", fields: [userId], references: [id], onDelete: Cascade)
+  gymTrainer GymTrainer @relation(fields: [gymTrainerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([gymTrainerId, status])
+}
+
+model FavoriteMeal {
+  id        String   @id @default(cuid())
+  userId    String
+  mealJson  String   @db.Text
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Follow {

@@ -28,6 +28,7 @@ import {
   updateGymTrainerForAdmin,
   updateUserRoleForAdmin
 } from "./admin.service.js";
+import { adminReviewPlanRequest } from "../gym/workout-plan-requests.service.js";
 
 const ROLE_VALUES = ["MEMBER", "GYM_TRAINER", "ADMIN"] as const;
 
@@ -117,6 +118,19 @@ export async function postGymTrainer(req: AuthedRequest, res: Response) {
     linkedUserId = requireString(body, "linkedUserId", { trim: true, min: 10, max: 40 });
   }
 
+  // Optional admin-created login credentials for the trainer account
+  const loginEmail = optionalString(body, "loginEmail", { trim: true, max: 200 });
+  const loginPassword = optionalString(body, "loginPassword", { trim: false, max: 200 });
+  if ((loginEmail == null) !== (loginPassword == null)) {
+    throw new HttpError(400, "Provide both login email and password, or neither");
+  }
+  if (loginEmail != null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+    throw new HttpError(400, "Invalid login email");
+  }
+  if (loginPassword != null && loginPassword.length < 8) {
+    throw new HttpError(400, "Login password must be at least 8 characters");
+  }
+
   const created = await createGymTrainerForAdmin({
     name,
     title: title == null ? undefined : title,
@@ -132,7 +146,9 @@ export async function postGymTrainer(req: AuthedRequest, res: Response) {
     contactPhone: contactPhone == null ? undefined : contactPhone,
     active,
     maxUsers: maxUsers == null ? undefined : Math.floor(maxUsers),
-    linkedUserId
+    linkedUserId,
+    loginEmail,
+    loginPassword
   });
   return jsonOk(res, created);
 }
@@ -179,6 +195,19 @@ export async function patchGymTrainer(req: AuthedRequest, res: Response) {
     linkedUserId = requireString(body, "linkedUserId", { trim: true, min: 10, max: 40 });
   }
 
+  // Optional admin-created login credentials for the trainer account
+  const loginEmail = optionalString(body, "loginEmail", { trim: true, max: 200 });
+  const loginPassword = optionalString(body, "loginPassword", { trim: false, max: 200 });
+  if ((loginEmail == null) !== (loginPassword == null)) {
+    throw new HttpError(400, "Provide both login email and password, or neither");
+  }
+  if (loginEmail != null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
+    throw new HttpError(400, "Invalid login email");
+  }
+  if (loginPassword != null && loginPassword.length < 8) {
+    throw new HttpError(400, "Login password must be at least 8 characters");
+  }
+
   const updated = await updateGymTrainerForAdmin(id, {
     ...(name !== undefined ? { name } : {}),
     ...(title !== undefined ? { title } : {}),
@@ -195,7 +224,9 @@ export async function patchGymTrainer(req: AuthedRequest, res: Response) {
     ...(contactPhone !== undefined ? { contactPhone } : {}),
     ...(active !== undefined ? { active } : {}),
     ...(approved !== undefined ? { approved } : {}),
-    ...(linkedUserId !== undefined ? { linkedUserId } : {})
+    ...(linkedUserId !== undefined ? { linkedUserId } : {}),
+    ...(loginEmail != null ? { loginEmail } : {}),
+    ...(loginPassword != null ? { loginPassword } : {})
   });
   return jsonOk(res, updated);
 }
@@ -230,6 +261,16 @@ export async function patchPlanRequestSessions(req: AuthedRequest, res: Response
   const body = requireObject(req.body);
   const proposedSessionsJson = requireString(body, "proposedSessionsJson", { min: 2, max: 500000 });
   const data = await patchPlanRequestProposedSessionsForAdmin({ requestId: id, proposedSessionsJson });
+  return jsonOk(res, data);
+}
+
+export async function postPlanRequestReview(req: AuthedRequest, res: Response) {
+  const id = String(req.params.id ?? "").trim();
+  const body = requireObject(req.body);
+  const action = requireEnum(body, "action", ["approve", "reject"] as const);
+  const comment = optionalString(body, "comment", { max: 2000 });
+  const editedSessionsJson = optionalString(body, "editedSessionsJson", { trim: false, max: 500000 });
+  const data = await adminReviewPlanRequest(req.userId!, id, action, comment, editedSessionsJson);
   return jsonOk(res, data);
 }
 

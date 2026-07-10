@@ -17,6 +17,7 @@ import {
   patchUserGymTrainer,
   patchUserRole,
   postGymTrainer,
+  postPlanRequestReview,
   postUserGymPlanRows
 } from "./admin.controller.js";
 import { getAdminRecipes, postAdminRecipe, patchAdminRecipe, deleteAdminRecipe } from "./admin-recipes.controller.js";
@@ -116,6 +117,14 @@ adminRouter.get("/admin/plan-requests/:id", requireAdmin, async (req: AuthedRequ
 adminRouter.patch("/admin/plan-requests/:id/sessions", requireAdmin, async (req: AuthedRequest, res) => {
   try {
     await patchPlanRequestSessions(req, res);
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+adminRouter.post("/admin/plan-requests/:id/review", requireAdmin, async (req: AuthedRequest, res) => {
+  try {
+    await postPlanRequestReview(req, res);
   } catch (err) {
     return jsonError(res, err);
   }

@@ -1,6 +1,7 @@
 import { jsonOk } from "../../shared/http/json-response.js";
 import { HttpError } from "../../shared/errors/http-error.js";
-import { optionalString, requireEnum, requireInt, requireObject } from "../../shared/validation/validators.js";
+import { optionalNumber, optionalString, optionalStringArray, requireEnum, requireInt, requireObject } from "../../shared/validation/validators.js";
+import { DIETARY_PREFERENCES, DIETARY_STYLES } from "../../shared/constants/dietary.js";
 import { completeOnboarding } from "./onboarding.service.js";
 export async function postOnboarding(req, res) {
     const body = requireObject(req.body);
@@ -12,6 +13,14 @@ export async function postOnboarding(req, res) {
         const gymTrainerRaw = optionalString(body, "gymTrainerId", { trim: true, max: 40 });
         gymTrainerId = gymTrainerRaw === undefined ? undefined : gymTrainerRaw.length === 0 ? null : gymTrainerRaw;
     }
+    const dietaryStyleRaw = optionalString(body, "dietaryStyle", { trim: true, max: 40 });
+    if (dietaryStyleRaw !== undefined && !DIETARY_STYLES.includes(dietaryStyleRaw)) {
+        throw new HttpError(400, "Invalid dietaryStyle");
+    }
+    const bodyFatPercent = optionalNumber(body, "bodyFatPercent");
+    if (bodyFatPercent !== undefined && (bodyFatPercent < 3 || bodyFatPercent > 60)) {
+        throw new HttpError(400, "Invalid bodyFatPercent");
+    }
     const payload = {
         heightCm: requireInt(body, "heightCm", { min: 100, max: 260 }),
         weightKg: Number(body.weightKg),
@@ -19,6 +28,9 @@ export async function postOnboarding(req, res) {
         gender: requireEnum(body, "gender", ["FEMALE", "MALE", "OTHER"]),
         activityLevel: requireEnum(body, "activityLevel", ["SEDENTARY", "LIGHT", "MODERATE", "ACTIVE", "ATHLETE"]),
         goal: requireEnum(body, "goal", ["FAT_LOSS", "MUSCLE_BUILD", "LIFESTYLE"]),
+        dietaryStyle: dietaryStyleRaw,
+        dietaryPreferences: optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES),
+        bodyFatPercent,
         gymTrainerId
     };
     if (!Number.isFinite(payload.weightKg) || payload.weightKg < 30 || payload.weightKg > 300)

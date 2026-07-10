@@ -5,6 +5,7 @@ import {
   deleteConversationById,
   deleteMessageById,
   getInbox,
+  getSupportContactHandler,
   getMessages,
   postConversation,
   postMarkRead,
@@ -14,6 +15,7 @@ import {
 export const dmRouter = Router();
 
 dmRouter.get("/conversations", requireUser, asyncHandler(getInbox));
+dmRouter.get("/dm/support-contact", requireUser, asyncHandler(getSupportContactHandler));
 dmRouter.post("/conversations", requireUser, asyncHandler(postConversation));
 dmRouter.get("/conversations/:id/messages", requireUser, asyncHandler(getMessages));
 dmRouter.post("/conversations/:id/messages", requireUser, asyncHandler(postMessage));
