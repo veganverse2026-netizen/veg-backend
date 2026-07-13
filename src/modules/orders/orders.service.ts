@@ -1,17 +1,20 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { createNotification } from "../notifications/notifications.service.js";
+import { computeCouponDiscount } from "../coupons/coupons.service.js";
 
 const ORDER_STATUSES = ["PENDING", "PAID", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"] as const;
+const USER_CANCELLABLE_STATUSES = ["PENDING", "PAID", "PROCESSING"] as const;
+const TERMINAL_STOCK_STATUSES = ["CANCELLED", "REFUNDED"] as const;
+
+const PRODUCT_SELECT = { id: true, name: true, slug: true, imageUrls: true, price: true, stock: true, status: true } as const;
 
 export async function listMyOrders(userId: string) {
   return prisma.order.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
     include: {
-      items: {
-        include: { product: { select: { id: true, name: true, slug: true, imageUrls: true } } },
-      },
+      items: { include: { product: { select: PRODUCT_SELECT } } },
       address: true,
     },
   });
@@ -21,9 +24,7 @@ export async function getMyOrder(userId: string, orderId: string) {
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId },
     include: {
-      items: {
-        include: { product: { select: { id: true, name: true, slug: true, imageUrls: true } } },
-      },
+      items: { include: { product: { select: PRODUCT_SELECT } } },
       address: true,
     },
   });
@@ -39,6 +40,7 @@ export async function createOrderFromStripe(input: {
   tax?: number;
   shipping?: number;
   addressId?: string;
+  couponCode?: string;
 }) {
   const existing = await prisma.order.findUnique({ where: { stripeSessionId: input.stripeSessionId } });
   if (existing) return existing;
@@ -78,6 +80,30 @@ export async function createOrderFromStripe(input: {
     const tax = input.tax ?? 0;
     const shipping = input.shipping ?? 0;
 
+    // Coupon usage is reserved here, inside the same transaction as the stock
+    // decrement, so a concurrent order can't both succeed against a
+    // single-use coupon. Payment has already succeeded by this point (this
+    // runs from the Stripe webhook), so an expired/exhausted coupon just
+    // means the order records zero discount rather than failing the order.
+    let discount = 0;
+    if (input.couponCode) {
+      const coupon = await tx.coupon.findUnique({ where: { code: input.couponCode.trim().toUpperCase() } });
+      if (coupon && coupon.active) {
+        const now = new Date();
+        const withinWindow = (!coupon.startsAt || now >= coupon.startsAt) && (!coupon.expiresAt || now <= coupon.expiresAt);
+        const meetsMinimum = coupon.minOrderValue == null || subtotal >= coupon.minOrderValue;
+        if (withinWindow && meetsMinimum) {
+          const reserved = await tx.coupon.updateMany({
+            where: { id: coupon.id, OR: [{ usageLimit: null }, { usedCount: { lt: coupon.usageLimit ?? 0 } }] },
+            data: { usedCount: { increment: 1 } },
+          });
+          if (reserved.count > 0) discount = computeCouponDiscount(coupon, subtotal);
+        }
+      }
+    }
+
+    const total = Math.max(0, subtotal + tax + shipping - discount);
+
     return tx.order.create({
       data: {
         userId: input.userId,
@@ -87,7 +113,9 @@ export async function createOrderFromStripe(input: {
         subtotal,
         tax,
         shipping,
-        total: subtotal + tax + shipping,
+        discount,
+        couponCode: discount > 0 ? input.couponCode!.trim().toUpperCase() : null,
+        total,
         addressId: input.addressId ?? null,
         items: { create: itemsData },
       },
@@ -103,6 +131,33 @@ export async function createOrderFromStripe(input: {
     });
     return order;
   });
+}
+
+export async function cancelMyOrder(userId: string, orderId: string, reason?: string) {
+  const order = await prisma.order.findFirst({ where: { id: orderId, userId }, include: { items: true } });
+  if (!order) throw new HttpError(404, "Order not found");
+  if (!(USER_CANCELLABLE_STATUSES as readonly string[]).includes(order.status)) {
+    throw new HttpError(400, `Orders that are already ${order.status.toLowerCase()} can't be cancelled here — contact support.`);
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    for (const item of order.items) {
+      await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+    }
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason ?? null },
+    });
+  });
+
+  await createNotification({
+    userId: updated.userId,
+    type: "ORDER_UPDATE",
+    title: "Order cancelled",
+    body: `Your order #${updated.id.slice(-8).toUpperCase()} has been cancelled${reason ? `: ${reason}` : "."}`,
+    link: "/dashboard/orders",
+  });
+  return updated;
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
@@ -147,16 +202,32 @@ export async function adminGetOrder(orderId: string) {
   return order;
 }
 
-export async function adminUpdateOrderStatus(orderId: string, status: string) {
+export async function adminUpdateOrderStatus(orderId: string, status: string, reason?: string) {
   if (!(ORDER_STATUSES as readonly string[]).includes(status)) {
     throw new HttpError(400, `Invalid status: ${status}`);
   }
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  const order = await prisma.order.findFirst({ where: { id: orderId }, include: { items: true } });
   if (!order) throw new HttpError(404, "Order not found");
-  const updated = await prisma.order.update({
-    where: { id: orderId },
-    data: { status: status as any },
+
+  const enteringTerminalStockState =
+    (TERMINAL_STOCK_STATUSES as readonly string[]).includes(status) &&
+    !(TERMINAL_STOCK_STATUSES as readonly string[]).includes(order.status);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (enteringTerminalStockState) {
+      for (const item of order.items) {
+        await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+      }
+    }
+    return tx.order.update({
+      where: { id: orderId },
+      data: {
+        status: status as any,
+        ...(status === "CANCELLED" ? { cancelledAt: new Date(), cancelReason: reason ?? order.cancelReason } : {}),
+      },
+    });
   });
+
   if (updated.status !== order.status) {
     await createNotification({
       userId: updated.userId,

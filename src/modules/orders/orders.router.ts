@@ -6,6 +6,7 @@ import {
   adminGetOrder,
   adminListOrders,
   adminUpdateOrderStatus,
+  cancelMyOrder,
   createOrderFromStripe,
   getMyOrder,
   listMyOrders,
@@ -32,6 +33,16 @@ ordersRouter.get("/orders/me/:id", requireUser, async (req: AuthedRequest, res) 
   }
 });
 
+ordersRouter.post("/orders/me/:id/cancel", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    const reason = typeof (req.body as any)?.reason === "string" ? (req.body as any).reason.slice(0, 500) : undefined;
+    const result = await cancelMyOrder(req.userId!, req.params.id, reason);
+    return jsonOk(res, result);
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
 // ─── Internal: create order from Stripe (called from Next.js webhook) ────────
 ordersRouter.post("/orders/internal/from-stripe", async (req, res) => {
   try {
@@ -46,6 +57,8 @@ ordersRouter.post("/orders/internal/from-stripe", async (req, res) => {
       items: Array<{ productId: string; quantity: number }>;
       tax?: number;
       shipping?: number;
+      addressId?: string;
+      couponCode?: string;
     };
     const result = await createOrderFromStripe(body);
     return res.json({ ok: true, data: result });
@@ -78,9 +91,9 @@ ordersRouter.get("/admin/orders/:id", requireUser, requireAdmin, async (req, res
 
 ordersRouter.patch("/admin/orders/:id/status", requireUser, requireAdmin, async (req, res) => {
   try {
-    const { status } = req.body as { status: string };
+    const { status, reason } = req.body as { status: string; reason?: string };
     if (!status) return jsonError(res, new Error("status required"));
-    const result = await adminUpdateOrderStatus(req.params.id, status);
+    const result = await adminUpdateOrderStatus(req.params.id, status, reason);
     return jsonOk(res, result);
   } catch (err) {
     return jsonError(res, err);
