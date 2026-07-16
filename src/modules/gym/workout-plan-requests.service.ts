@@ -120,7 +120,9 @@ export async function listMyMembers(trainerUserId: string) {
       activityLevel: true,
       dietaryStyle: true,
       approvedGymPlanJson: true,
-      onboardingCompletedAt: true
+      onboardingCompletedAt: true,
+      goalTargetWeightKg: true,
+      goalTimelineWeeks: true
     },
     orderBy: { createdAt: "desc" }
   });
@@ -152,7 +154,10 @@ export async function getMemberDetailForTrainer(trainerUserId: string, memberId:
       bodyFatPercent: true,
       approvedGymPlanJson: true,
       onboardingCompletedAt: true,
-      gymTrainerId: true
+      gymTrainerId: true,
+      goalTargetWeightKg: true,
+      goalTimelineWeeks: true,
+      goalTargetDate: true
     }
   });
   if (!member || member.gymTrainerId !== profile.id) {

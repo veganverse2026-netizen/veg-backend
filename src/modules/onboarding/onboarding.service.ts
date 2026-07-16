@@ -14,6 +14,9 @@ export async function completeOnboarding(
     dietaryPreferences?: string[];
     bodyFatPercent?: number;
     gymTrainerId?: string | null;
+    goalTargetWeightKg?: number;
+    goalTimelineWeeks?: number;
+    goalTargetDate?: Date;
   }
 ) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -33,6 +36,24 @@ export async function completeOnboarding(
   }
 
   const lockGoal = input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD";
+
+  // A target weight + timeline only makes sense for a goal that isn't
+  // "maintain" — clear any previous timeline data if the user switches to
+  // LIFESTYLE (only possible before the goal locks), so stale values can
+  // never later influence meal-plan pacing.
+  const hasTimelineInput = input.goalTargetWeightKg !== undefined && input.goalTimelineWeeks !== undefined;
+  const goalTimelineData = lockGoal && hasTimelineInput
+    ? {
+        goalTargetWeightKg: input.goalTargetWeightKg,
+        goalTimelineWeeks: input.goalTimelineWeeks,
+        goalTargetDate: input.goalTargetDate ?? new Date(Date.now() + input.goalTimelineWeeks! * 7 * 86400000),
+        goalStartWeightKg: input.weightKg,
+        goalSetAt: new Date()
+      }
+    : !lockGoal
+    ? { goalTargetWeightKg: null, goalTimelineWeeks: null, goalTargetDate: null, goalStartWeightKg: null, goalSetAt: null }
+    : {};
+
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -48,7 +69,8 @@ export async function completeOnboarding(
       ...(input.dietaryStyle !== undefined ? { dietaryStyle: input.dietaryStyle } : {}),
       ...(input.dietaryPreferences !== undefined ? { dietaryPreferences: input.dietaryPreferences } : {}),
       ...(input.bodyFatPercent !== undefined ? { bodyFatPercent: input.bodyFatPercent } : {}),
-      ...(trainerConnect ? { gymTrainer: trainerConnect } : {})
+      ...(trainerConnect ? { gymTrainer: trainerConnect } : {}),
+      ...goalTimelineData
     }
   });
 

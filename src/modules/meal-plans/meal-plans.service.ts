@@ -6,8 +6,8 @@ import { analyzeNutrientCoverage } from "./meal-nutrients.js";
 
 const USER_PROFILE_SELECT = {
   weightKg: true, heightCm: true, age: true, gender: true,
-  activityLevel: true, goal: true, dietaryPreferences: true,
-  calorieTargetOverride: true
+  activityLevel: true, goal: true, dietaryStyle: true, dietaryPreferences: true,
+  calorieTargetOverride: true, goalTargetWeightKg: true, goalTimelineWeeks: true
 } as const;
 
 function parsePlan(json: string): GeneratedMealPlan {

@@ -2,6 +2,7 @@ import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { createNotification } from "../notifications/notifications.service.js";
 import { computeCalorieTarget } from "./meal-plan-generator.js";
+import { computeMacroTargets, computeHydrationTarget, type GoalKind } from "../../shared/domain/calorieEngine.js";
 
 const SLOTS = ["breakfast", "morning-snack", "lunch", "evening-snack", "dinner"] as const;
 
@@ -70,8 +71,9 @@ export async function getDailySummary(userId: string, dateStr?: string) {
       where: { id: userId },
       select: {
         mealPlanJson: true, weightKg: true, heightCm: true, age: true, gender: true,
-        activityLevel: true, goal: true, dietaryPreferences: true,
-        calorieTargetOverride: true, proteinTargetOverride: true, hydrationTargetOverride: true
+        activityLevel: true, goal: true, dietaryStyle: true, dietaryPreferences: true,
+        calorieTargetOverride: true, proteinTargetOverride: true, hydrationTargetOverride: true,
+        carbsTargetOverride: true, fatTargetOverride: true
       }
     })
   ]);
@@ -93,16 +95,24 @@ export async function getDailySummary(userId: string, dateStr?: string) {
   let plan: any = null;
   try { plan = user.mealPlanJson ? JSON.parse(user.mealPlanJson) : null; } catch {}
   const calorieTarget = plan?.meta?.dailyCalories ?? user.calorieTargetOverride ?? computeCalorieTarget(user);
-  const proteinTarget = plan?.meta?.protein ?? user.proteinTargetOverride ?? (user.weightKg ? Math.round(user.weightKg * 1.6) : null);
+  // Computed macro defaults (protein by goal, fat as a % of calories, carbs
+  // as the remainder) — only when weightKg is known, same guard the old
+  // protein-only default used. Goal defaults to LIFESTYLE (1.6 g/kg protein)
+  // when unset, matching the previous hardcoded behavior exactly.
+  const computedMacros = user.weightKg
+    ? computeMacroTargets({ dailyCalorieTarget: calorieTarget, goal: (user.goal as GoalKind) ?? "LIFESTYLE", weightKg: user.weightKg })
+    : null;
+  const proteinTarget = plan?.meta?.protein ?? user.proteinTargetOverride ?? computedMacros?.proteinG ?? null;
   // Hydration: profile override wins (stored in liters, but tolerate ml
-  // values defensively); default 3.5L.
+  // values defensively); default is now bodyweight-based (35 ml/kg) instead
+  // of a flat 3.5L for everyone.
   const hydration = user.hydrationTargetOverride;
-  const waterMl = hydration ? Math.round(hydration > 100 ? hydration : hydration * 1000) : 3500;
+  const waterMl = hydration ? Math.round(hydration > 100 ? hydration : hydration * 1000) : computeHydrationTarget(user.weightKg);
   const targets = {
     calories: calorieTarget,
     protein: proteinTarget,
-    carbs: plan?.meta?.carbs ?? null,
-    fat: plan?.meta?.fat ?? null,
+    carbs: plan?.meta?.carbs ?? user.carbsTargetOverride ?? computedMacros?.carbsG ?? null,
+    fat: plan?.meta?.fat ?? user.fatTargetOverride ?? computedMacros?.fatG ?? null,
     fiber: plan?.meta?.fiber ?? Math.round((calorieTarget / 1000) * 14),
     waterMl
   };

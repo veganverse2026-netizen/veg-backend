@@ -1,4 +1,5 @@
 import { MEAL_LIBRARY, type LibraryMeal, type MealSlot } from "./meal-library.js";
+import { computeTDEE, computeGoalCalorieTarget, type GoalKind } from "../../shared/domain/calorieEngine.js";
 
 export interface PlanMeal {
   slot: "breakfast" | "morning-snack" | "lunch" | "evening-snack" | "dinner";
@@ -59,8 +60,11 @@ interface UserProfile {
   gender: string | null;
   activityLevel: string | null;
   goal: string | null;
+  dietaryStyle: string | null;
   dietaryPreferences: string[];
   calorieTargetOverride: number | null;
+  goalTargetWeightKg?: number | null;
+  goalTimelineWeeks?: number | null;
 }
 
 export interface GeneratorContext {
@@ -92,14 +96,12 @@ function trainingDaysFrom(gymPlanJson: string | null | undefined): Set<string> |
   }
 }
 
-/* Mifflin-St Jeor with activity factor — same formula the Progress page shows */
+/* Mifflin-St Jeor with activity factor — same formula the Progress page shows.
+   Pure maintenance TDEE; unrelated to any goal-timeline pace (see
+   generateRecommendations below for where a goal's pace is applied). */
 export function computeCalorieTarget(user: UserProfile): number {
   if (user.calorieTargetOverride) return user.calorieTargetOverride;
-  if (!user.weightKg || !user.heightCm || !user.age) return 2000;
-  const genderTerm = user.gender === "MALE" ? 5 : user.gender === "FEMALE" ? -161 : -78;
-  const bmr = 10 * user.weightKg + 6.25 * user.heightCm - 5 * user.age + genderTerm;
-  const factors: Record<string, number> = { SEDENTARY: 1.2, LIGHT: 1.375, MODERATE: 1.55, ACTIVE: 1.725, ATHLETE: 1.9 };
-  return Math.round((bmr * (factors[user.activityLevel ?? ""] ?? 1.4)) / 10) * 10;
+  return computeTDEE(user);
 }
 
 interface PlanTemplate {
@@ -164,8 +166,31 @@ const EXCLUDE_BY_PREF: Record<string, string> = {
   "nut-free": "nuts",
 };
 
-function eligibleMeals(prefs: string[]): LibraryMeal[] {
+// A subset of the 16 dietary styles carry a real allergen implication, so
+// they exclude meal-library tags the same way an equivalent dietaryPreferences
+// tag would; the rest (whole-foods, raw, hclf, balanced, high-fiber-vegan,
+// heart-healthy, anti-inflammatory, trainer-choice, ...) are lifestyle labels
+// with no matching meal-library tag and stay purely descriptive.
+const EXCLUDE_BY_DIETARY_STYLE: Record<string, string> = {
+  "gluten-free-vegan": "gluten",
+  "soy-free-vegan": "soy",
+  "nut-free-vegan": "nuts",
+};
+
+// Styles whose whole point is a macro emphasis get the same slot-level
+// meal-scoring bias a matching template's preferTag would apply.
+const BIAS_BY_DIETARY_STYLE: Record<string, "high-protein" | "low-carb"> = {
+  "high-protein-vegan": "high-protein",
+  "athlete-performance": "high-protein",
+  "muscle-gain": "high-protein",
+  "low-carb-vegan": "low-carb",
+  "weight-loss": "low-carb",
+};
+
+function eligibleMeals(prefs: string[], dietaryStyle?: string | null): LibraryMeal[] {
   const excluded = prefs.map(p => EXCLUDE_BY_PREF[p]).filter(Boolean);
+  const styleExclusion = dietaryStyle ? EXCLUDE_BY_DIETARY_STYLE[dietaryStyle] : undefined;
+  if (styleExclusion) excluded.push(styleExclusion);
   return MEAL_LIBRARY.filter(m => !m.tags.some(t => excluded.includes(t)));
 }
 
@@ -187,19 +212,30 @@ function scaleMeal(meal: LibraryMeal, slot: PlanMeal["slot"], budget: number): P
   };
 }
 
-function buildWeek(template: PlanTemplate, dailyCalories: number, prefs: string[], ctx?: GeneratorContext): PlanDay[] {
-  const pool = eligibleMeals(prefs);
+function buildWeek(template: PlanTemplate, dailyCalories: number, prefs: string[], dietaryStyle: string | null | undefined, ctx?: GeneratorContext): PlanDay[] {
+  const pool = eligibleMeals(prefs, dietaryStyle);
   const disliked = new Set((ctx?.dislikedNames ?? []).map(n => n.toLowerCase()));
+  // The template's own preferTag defines that plan's core identity (e.g. the
+  // "New Vegan Transition" plan stays comfort-food-focused regardless of
+  // dietary style); a dietary-style bias only kicks in when the template
+  // doesn't already have an opinion.
+  const bias: "high-protein" | "low-carb" | "comfort" | undefined =
+    template.preferTag === "comfort" ? "comfort"
+    : template.preferTag === "high-protein" ? "high-protein"
+    : (dietaryStyle ? BIAS_BY_DIETARY_STYLE[dietaryStyle] : undefined);
   const bySlot = new Map<MealSlot, LibraryMeal[]>();
   for (const s of ["breakfast", "snack", "lunch", "dinner"] as MealSlot[]) {
     let list = pool.filter(m => m.slot === s);
-    if (template.preferTag === "high-protein") {
+    if (bias === "high-protein") {
       // Protein-forward plans rotate within the most protein-dense meals for
       // the slot (keep at least 3 for variety) instead of the whole pool —
       // otherwise the rotation dilutes protein right back to the average.
       const sorted = [...list].sort((a, b) => b.protein / b.calories - a.protein / a.calories);
       list = sorted.slice(0, Math.max(3, Math.ceil(sorted.length * 0.6)));
-    } else if (template.preferTag === "comfort") {
+    } else if (bias === "low-carb") {
+      const sorted = [...list].sort((a, b) => a.carbs / a.calories - b.carbs / b.calories);
+      list = sorted.slice(0, Math.max(3, Math.ceil(sorted.length * 0.6)));
+    } else if (bias === "comfort") {
       const comfy = list.filter(m => m.tags.includes("comfort"));
       if (comfy.length >= 3) list = comfy;
     }
@@ -252,9 +288,27 @@ function buildWeek(template: PlanTemplate, dailyCalories: number, prefs: string[
 export function generateRecommendations(user: UserProfile, ctx?: GeneratorContext): GeneratedMealPlan[] {
   const maintenance = computeCalorieTarget(user);
 
+  // A member's own goal-timeline pace (explicit target weight + timeline)
+  // is more specific than any template's generic calorieFactor guess, so it
+  // supersedes it — same daily-calorie anchor across all 5 templates instead
+  // of each one applying its own intensity multiplier. A trainer's manual
+  // calorieTargetOverride still wins over both (existing behavior, computed
+  // inside computeCalorieTarget above and detected here to skip goal-pacing).
+  const hasGoalTimeline = !user.calorieTargetOverride && user.goal && user.goal !== "LIFESTYLE" &&
+    user.goalTargetWeightKg != null && user.goalTimelineWeeks != null && user.weightKg != null;
+  const goalPacedCalories = hasGoalTimeline
+    ? computeGoalCalorieTarget({
+        tdee: maintenance,
+        goal: user.goal as GoalKind,
+        currentWeightKg: user.weightKg!,
+        targetWeightKg: user.goalTargetWeightKg!,
+        timelineWeeks: user.goalTimelineWeeks!,
+      })
+    : null;
+
   const plans = TEMPLATES.map(t => {
-    const dailyCalories = Math.round((maintenance * t.calorieFactor) / 10) * 10;
-    const week = buildWeek(t, dailyCalories, user.dietaryPreferences, ctx);
+    const dailyCalories = goalPacedCalories ?? Math.round((maintenance * t.calorieFactor) / 10) * 10;
+    const week = buildWeek(t, dailyCalories, user.dietaryPreferences, user.dietaryStyle, ctx);
 
     // The meta targets users measure themselves against must match what the
     // composed week actually delivers — never the template's aspiration

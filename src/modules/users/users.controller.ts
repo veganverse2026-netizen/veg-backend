@@ -11,7 +11,7 @@ import {
   requireObject,
   requireString
 } from "../../shared/validation/validators.js";
-import { DIETARY_PREFERENCES, DIETARY_STYLES } from "../../shared/constants/dietary.js";
+import { DIETARY_PREFERENCES, DIETARY_STYLES, normalizeDietaryPreferences } from "../../shared/constants/dietary.js";
 import {
   DEFAULT_NOTIFICATION_PREFS,
   LANGUAGES,
@@ -59,21 +59,19 @@ export async function patchMe(req: AuthedRequest, res: Response) {
 
   let heightCm: number | undefined;
   if (body.heightCm !== undefined && body.heightCm !== null) {
-    const v = Number(body.heightCm);
-    if (!Number.isFinite(v) || v < 100 || v > 260) throw new HttpError(400, "Invalid heightCm");
-    heightCm = v;
+    heightCm = requireInt(body, "heightCm", { min: 50, max: 250 });
   }
 
   let weightKg: number | undefined;
   if (body.weightKg !== undefined && body.weightKg !== null) {
     const v = Number(body.weightKg);
-    if (!Number.isFinite(v) || v < 30 || v > 300) throw new HttpError(400, "Invalid weightKg");
+    if (!Number.isFinite(v) || v < 20 || v > 300) throw new HttpError(400, "Invalid weightKg");
     weightKg = v;
   }
 
   let age: number | undefined;
   if (body.age !== undefined && body.age !== null) {
-    age = requireInt(body, "age", { min: 12, max: 100 });
+    age = requireInt(body, "age", { min: 13, max: 100 });
   }
 
   let gender: "FEMALE" | "MALE" | "OTHER" | undefined;
@@ -95,12 +93,12 @@ export async function patchMe(req: AuthedRequest, res: Response) {
   if (body.dietaryStyle !== undefined && body.dietaryStyle !== null) {
     dietaryStyle = requireEnum(body, "dietaryStyle", DIETARY_STYLES);
   }
-  const dietaryPreferences = optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES);
+  const dietaryPreferences = normalizeDietaryPreferences(optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES));
 
   let bodyFatPercent: number | undefined;
   if (body.bodyFatPercent !== undefined && body.bodyFatPercent !== null) {
     const v = Number(body.bodyFatPercent);
-    if (!Number.isFinite(v) || v < 3 || v > 60) throw new HttpError(400, "Invalid bodyFatPercent");
+    if (!Number.isFinite(v) || v < 1 || v > 70) throw new HttpError(400, "Invalid bodyFatPercent");
     bodyFatPercent = v;
   }
 
