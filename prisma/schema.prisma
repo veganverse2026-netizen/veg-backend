@@ -128,6 +128,7 @@ model User {
   sessions               Session[]
   trackers               Tracker[]
   workoutLogs            WorkoutLog[]
+  strengthGoals          StrengthGoal[]
   streaks                Streak[]
   cheatMeals             CheatMeal[]
   posts                  Post[]
@@ -279,10 +280,25 @@ model Tracker {
   caloriesConsumed Int?
   proteinIntake    Int?
   workoutCompleted Boolean   @default(false)
+  hydrationMl      Int?
+  sleepHours       Float?
+  bodyFatPercent   Float?
 
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+}
+
+model StrengthGoal {
+  id             String   @id @default(cuid())
+  userId         String
+  exercise       String
+  targetWeightKg Float
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exercise])
 }
 
 model Streak {

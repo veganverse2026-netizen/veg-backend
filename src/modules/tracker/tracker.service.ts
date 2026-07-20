@@ -28,6 +28,9 @@ export async function addTrackerEntry(
     caloriesConsumed?: number;
     proteinIntake?: number;
     workoutCompleted?: boolean;
+    hydrationMl?: number;
+    sleepHours?: number;
+    bodyFatPercent?: number;
   }
 ) {
   const today = startOfDay(new Date());
@@ -38,7 +41,10 @@ export async function addTrackerEntry(
       weightKg: input.weightKg,
       caloriesConsumed: input.caloriesConsumed,
       proteinIntake: input.proteinIntake,
-      workoutCompleted: input.workoutCompleted ?? false
+      workoutCompleted: input.workoutCompleted ?? false,
+      hydrationMl: input.hydrationMl,
+      sleepHours: input.sleepHours,
+      bodyFatPercent: input.bodyFatPercent
     }
   });
 

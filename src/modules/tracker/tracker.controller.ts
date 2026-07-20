@@ -15,7 +15,10 @@ export async function postTracker(req: AuthedRequest, res: Response) {
     weightKg: optionalNumber(body, "weightKg"),
     caloriesConsumed: optionalNumber(body, "caloriesConsumed"),
     proteinIntake: optionalNumber(body, "proteinIntake"),
-    workoutCompleted: optionalBoolean(body, "workoutCompleted")
+    workoutCompleted: optionalBoolean(body, "workoutCompleted"),
+    hydrationMl: optionalNumber(body, "hydrationMl"),
+    sleepHours: optionalNumber(body, "sleepHours"),
+    bodyFatPercent: optionalNumber(body, "bodyFatPercent")
   };
 
   const result = await addTrackerEntry(req.userId!, payload);
