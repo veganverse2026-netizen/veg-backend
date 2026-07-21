@@ -130,6 +130,21 @@ export async function createOrderFromStripe(input: {
       link: "/dashboard/orders",
     });
     return order;
+  }).catch(async (err) => {
+    // Payment has already succeeded via Stripe by the time this runs (webhook-driven),
+    // so any failure here — most commonly losing a stock race to another buyer —
+    // leaves the customer charged with no order. The webhook handler issues the
+    // compensating Stripe refund; let the user know here.
+    await createNotification({
+      userId: input.userId,
+      type: "ORDER_UPDATE",
+      title: "Order couldn't be completed",
+      body: err instanceof HttpError && err.status === 409
+        ? "An item in your order sold out just before we could confirm it. You have not been charged — a refund is being processed."
+        : "We couldn't complete your order after payment. A refund is being processed.",
+      link: "/dashboard/orders",
+    });
+    throw err;
   });
 }
 

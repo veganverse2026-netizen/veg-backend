@@ -142,7 +142,7 @@ export async function forgotRequestOtp(input: { email: string }) {
   const code = generateOtpCode();
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new HttpError(400, "No account found for this email");
+  if (!user) return { success: true, emailSent: false, message: "If that account exists, a code has been sent" };
 
   await prisma.otpChallenge.updateMany({ where: { email, purpose: "RESET", consumedAt: null }, data: { consumedAt: new Date() } });
   await prisma.otpChallenge.create({ data: { email, purpose: "RESET", codeHash: hashOtpCode(code), expiresAt: otpExpiry(10) } });

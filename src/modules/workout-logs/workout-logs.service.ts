@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { createNotification } from "../notifications/notifications.service.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { recomputeStreakCount } from "../../shared/domain/streak.js";
 
 function startOfDay(d: Date) {
   const copy = new Date(d);
@@ -41,15 +42,7 @@ async function markWorkoutCompletedForStreak(tx: Prisma.TransactionClient, userI
     create: { userId, date: today, completed: true }
   });
 
-  const allDates = await tx.streak.findMany({ where: { userId, completed: true }, select: { date: true } });
-  const dateKeys = new Set(allDates.map((d) => dateKey(d.date)));
-  let currentStreak = 0;
-  const cursor = startOfDay(new Date());
-  while (dateKeys.has(dateKey(cursor))) {
-    currentStreak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  await tx.user.update({ where: { id: userId }, data: { streakCount: currentStreak } });
+  await recomputeStreakCount(tx, userId);
 }
 
 type Pr = { exercise: string; bestWeightKg: number; bestVolume: number; updatedAt: Date };
