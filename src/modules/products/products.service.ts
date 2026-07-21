@@ -1,6 +1,15 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
+const SORT_ORDER_BY: Record<string, Array<Record<string, "asc" | "desc">>> = {
+  "price-low": [{ price: "asc" }],
+  "price-high": [{ price: "desc" }],
+  newest: [{ createdAt: "desc" }],
+  // "popular"/"rating" have no real aggregated data behind them yet (review
+  // counts/ratings aren't computed anywhere) — fall back to the default
+  // ordering rather than sorting by a fabricated value.
+};
+
 export async function listProducts(opts: {
   categorySlug?: string;
   status?: string;
@@ -8,6 +17,7 @@ export async function listProducts(opts: {
   page?: number;
   limit?: number;
   q?: string;
+  sortBy?: string;
 }) {
   const page = Math.max(1, opts.page ?? 1);
   const limit = Math.min(50, Math.max(1, opts.limit ?? 20));
@@ -28,13 +38,15 @@ export async function listProducts(opts: {
     ];
   }
 
+  const orderBy = (opts.sortBy && SORT_ORDER_BY[opts.sortBy]) || [{ isFeatured: "desc" }, { createdAt: "desc" }];
+
   const [total, products] = await Promise.all([
     prisma.product.count({ where: where as any }),
     prisma.product.findMany({
       where: where as any,
       skip,
       take: limit,
-      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+      orderBy,
       include: { category: { select: { id: true, name: true, slug: true } } },
     }),
   ]);

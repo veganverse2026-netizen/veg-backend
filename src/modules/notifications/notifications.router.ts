@@ -8,6 +8,7 @@ import {
   getUnread,
   patchRead,
   patchAllRead,
+  deleteMyNotificationRoute,
   adminBroadcast,
   adminGetNotifications,
   adminDeleteNotification,
@@ -20,6 +21,7 @@ notificationsRouter.get("/notifications", requireUser, asyncHandler(getMyNotific
 notificationsRouter.get("/notifications/unread-count", requireUser, asyncHandler(getUnread));
 notificationsRouter.patch("/notifications/read-all", requireUser, asyncHandler(patchAllRead));
 notificationsRouter.patch("/notifications/:id/read", requireUser, asyncHandler(patchRead));
+notificationsRouter.delete("/notifications/:id", requireUser, asyncHandler(deleteMyNotificationRoute));
 
 // Admin routes
 notificationsRouter.get("/admin/notifications", requireUser, requireAdmin, asyncHandler(adminGetNotifications));

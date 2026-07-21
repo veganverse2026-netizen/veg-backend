@@ -95,6 +95,13 @@ export async function deleteNotification(id: string) {
   return { ok: true };
 }
 
+export async function deleteMyNotification(userId: string, id: string) {
+  const n = await prisma.notification.findFirst({ where: { id, userId } });
+  if (!n) return null;
+  await prisma.notification.delete({ where: { id } });
+  return { ok: true, wasUnread: !n.read };
+}
+
 export async function getUnreadCount(userId: string) {
   const count = await prisma.notification.count({ where: { userId, read: false } });
   return { count };

@@ -12,6 +12,19 @@ initSocketIo(server);
 startWorkoutReminderScheduler();
 startMealReminderScheduler();
 startWeeklyTrainerDigestScheduler();
-server.listen(port, () => {
-    console.log(`Backend listening on :${port}`);
-});
+function listen(retriesLeft = 5) {
+    server.once("error", (err) => {
+        if (err.code === "EADDRINUSE" && retriesLeft > 0) {
+            console.warn(`Port ${port} in use, retrying in 500ms... (${retriesLeft} left)`);
+            setTimeout(() => listen(retriesLeft - 1), 500);
+        }
+        else {
+            console.error(err);
+            process.exit(1);
+        }
+    });
+    server.listen(port, () => {
+        console.log(`Backend listening on :${port}`);
+    });
+}
+listen();

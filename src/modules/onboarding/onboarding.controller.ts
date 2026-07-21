@@ -12,13 +12,8 @@ import {
 
 export async function postOnboarding(req: AuthedRequest, res: Response) {
   const body = requireObject(req.body);
-  let gymTrainerId: string | null | undefined;
-  if (body.gymTrainerId === null) {
-    gymTrainerId = null;
-  } else if (body.gymTrainerId !== undefined) {
-    const gymTrainerRaw = optionalString(body, "gymTrainerId", { trim: true, max: 40 });
-    gymTrainerId = gymTrainerRaw === undefined ? undefined : gymTrainerRaw.length === 0 ? null : gymTrainerRaw;
-  }
+  // Trainer assignment is admin-only — onboarding no longer accepts a
+  // self-selected gymTrainerId, even though the wizard never sent one either.
   const dietaryStyleRaw = optionalString(body, "dietaryStyle", { trim: true, max: 40 });
   if (dietaryStyleRaw !== undefined && !DIETARY_STYLES.includes(dietaryStyleRaw as any)) {
     throw new HttpError(400, "Invalid dietaryStyle");
@@ -55,7 +50,6 @@ export async function postOnboarding(req: AuthedRequest, res: Response) {
     dietaryStyle: dietaryStyleRaw as (typeof DIETARY_STYLES)[number] | undefined,
     dietaryPreferences: normalizeDietaryPreferences(optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES)),
     bodyFatPercent,
-    gymTrainerId,
     goalTargetWeightKg,
     goalTimelineWeeks,
     goalTargetDate

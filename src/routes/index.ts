@@ -8,7 +8,6 @@ import { workoutLogsRouter } from "../modules/workout-logs/workout-logs.router.j
 import { strengthGoalsRouter } from "../modules/strength-goals/strength-goals.router.js";
 import { onboardingRouter } from "../modules/onboarding/onboarding.router.js";
 import { cheatMealsRouter } from "../modules/cheat-meals/cheat-meals.router.js";
-import { vegabotRouter } from "../modules/vegabot/vegabot.router.js";
 import { usersRouter } from "../modules/users/users.router.js";
 import { catalogRouter } from "../modules/catalog/catalog.router.js";
 import { journeyRouter } from "../modules/journey/journey.router.js";
@@ -26,6 +25,8 @@ import { addressesRouter } from "../modules/addresses/addresses.router.js";
 import { wishlistRouter } from "../modules/wishlist/wishlist.router.js";
 import { couponsRouter } from "../modules/coupons/coupons.router.js";
 import { analyticsRouter } from "../modules/analytics/analytics.router.js";
+import { trainerChangeRequestsRouter } from "../modules/trainer-change-requests/trainer-change-requests.router.js";
+import { aiAssistantRouter } from "../modules/ai-assistant/ai-assistant.router.js";
 
 export const apiRouter = Router();
 
@@ -40,7 +41,6 @@ apiRouter.use(workoutLogsRouter);
 apiRouter.use(strengthGoalsRouter);
 apiRouter.use(onboardingRouter);
 apiRouter.use(cheatMealsRouter);
-apiRouter.use(vegabotRouter);
 apiRouter.use(usersRouter);
 apiRouter.use(addressesRouter);
 apiRouter.use(wishlistRouter);
@@ -56,3 +56,5 @@ apiRouter.use(productsRouter);
 apiRouter.use(ordersRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(challengesRouter);
+apiRouter.use(trainerChangeRequestsRouter);
+apiRouter.use(aiAssistantRouter);

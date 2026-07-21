@@ -23,6 +23,8 @@ export const env = {
   GOOGLE_CLIENT_ID: optionalEnv("GOOGLE_CLIENT_ID"),
   AUTH_FROM_EMAIL: optionalEnv("AUTH_FROM_EMAIL"),
   OPENAI_API_KEY: optionalEnv("OPENAI_API_KEY"),
-  OPENAI_MODEL: optionalEnv("OPENAI_MODEL")
+  OPENAI_MODEL: optionalEnv("OPENAI_MODEL"),
+  ANTHROPIC_API_KEY: optionalEnv("ANTHROPIC_API_KEY"),
+  ANTHROPIC_MODEL: optionalEnv("ANTHROPIC_MODEL")
 };
 

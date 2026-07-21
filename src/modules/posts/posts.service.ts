@@ -34,9 +34,21 @@ function buildCommentTree<T extends FlatComment>(flat: T[]): (T & { replies: unk
   return roots;
 }
 
-export async function getFeed(limit = MAX_FEED_POSTS) {
+export async function getFeed(opts: { limit?: number; cursor?: string; q?: string; type?: string } = {}) {
+  const limit = Math.max(1, Math.min(MAX_FEED_POSTS, opts.limit ?? 10));
+  const where: any = {};
+  if (opts.q) {
+    where.content = { contains: opts.q, mode: "insensitive" };
+  }
+  if (opts.type) {
+    where.type = opts.type;
+  }
+
   const posts = await prisma.post.findMany({
-    take: Math.max(1, Math.min(MAX_FEED_POSTS, limit)),
+    where,
+    // fetch one extra row so we can tell whether another page exists without a second count query
+    take: limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     include: {
       user: { select: { id: true, name: true, goal: true } },
       comments: {
@@ -45,10 +57,18 @@ export async function getFeed(limit = MAX_FEED_POSTS) {
       },
       likes: true
     },
-    orderBy: { createdAt: "desc" }
+    // secondary id order keeps pagination stable if two posts share a createdAt tick
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }]
   });
 
-  return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) }));
+  const hasMore = posts.length > limit;
+  const page = hasMore ? posts.slice(0, limit) : posts;
+  const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+  return {
+    posts: page.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) })),
+    nextCursor
+  };
 }
 
 export async function createPost(

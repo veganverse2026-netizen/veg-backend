@@ -50,11 +50,12 @@ export async function patchMe(req: AuthedRequest, res: Response) {
   let email: string | undefined;
   if (body.email != null) email = requireEmail(body, "email");
 
-  let gymTrainerId: string | null | undefined;
-  if (body.gymTrainerId === null) {
-    gymTrainerId = null;
-  } else if (body.gymTrainerId !== undefined) {
-    gymTrainerId = requireString(body, "gymTrainerId", { trim: true, min: 10, max: 40 });
+  // Trainer assignment is admin-only and always goes through the dedicated
+  // PATCH /admin/users/:id/gym-trainer route — never through self-profile
+  // edit, even for an admin acting on their own account. Enforced here (not
+  // just hidden in the UI); users request a change via /trainer-change-requests.
+  if (body.gymTrainerId !== undefined) {
+    throw new HttpError(403, "Trainer assignment is admin-only — use the Request Trainer Change form instead");
   }
 
   let heightCm: number | undefined;
@@ -112,6 +113,44 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     language = requireEnum(body, "language", LANGUAGES);
   }
 
+  let goalTargetWeightKg: number | null | undefined;
+  if (body.goalTargetWeightKg === null) goalTargetWeightKg = null;
+  else if (body.goalTargetWeightKg !== undefined) {
+    const v = Number(body.goalTargetWeightKg);
+    if (!Number.isFinite(v) || v < 20 || v > 300) throw new HttpError(400, "Invalid goalTargetWeightKg");
+    goalTargetWeightKg = v;
+  }
+
+  let goalTargetBodyFatPercent: number | null | undefined;
+  if (body.goalTargetBodyFatPercent === null) goalTargetBodyFatPercent = null;
+  else if (body.goalTargetBodyFatPercent !== undefined) {
+    const v = Number(body.goalTargetBodyFatPercent);
+    if (!Number.isFinite(v) || v < 1 || v > 70) throw new HttpError(400, "Invalid goalTargetBodyFatPercent");
+    goalTargetBodyFatPercent = v;
+  }
+
+  let weeklyWorkoutTarget: number | null | undefined;
+  if (body.weeklyWorkoutTarget === null) weeklyWorkoutTarget = null;
+  else if (body.weeklyWorkoutTarget !== undefined) {
+    weeklyWorkoutTarget = requireInt(body, "weeklyWorkoutTarget", { min: 0, max: 14 });
+  }
+
+  let goalTargetDate: Date | null | undefined;
+  if (body.goalTargetDate === null) goalTargetDate = null;
+  else if (body.goalTargetDate !== undefined) {
+    const d = new Date(String(body.goalTargetDate));
+    if (isNaN(d.getTime())) throw new HttpError(400, "Invalid goalTargetDate");
+    goalTargetDate = d;
+  }
+
+  let goalSetAt: Date | null | undefined;
+  if (body.goalSetAt === null) goalSetAt = null;
+  else if (body.goalSetAt !== undefined) {
+    const d = new Date(String(body.goalSetAt));
+    if (isNaN(d.getTime())) throw new HttpError(400, "Invalid goalSetAt");
+    goalSetAt = d;
+  }
+
   let notificationPrefs: NotificationPrefs | undefined;
   if (body.notificationPrefs !== undefined && body.notificationPrefs !== null) {
     const raw = requireObject(body.notificationPrefs, "Invalid notificationPrefs");
@@ -129,7 +168,6 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     name: name == null ? undefined : name,
     email: email == null ? undefined : email,
     image: image == null ? undefined : image,
-    gymTrainerId,
     ...(heightCm !== undefined ? { heightCm } : {}),
     ...(weightKg !== undefined ? { weightKg } : {}),
     ...(age !== undefined ? { age } : {}),
@@ -141,7 +179,12 @@ export async function patchMe(req: AuthedRequest, res: Response) {
     ...(bodyFatPercent !== undefined ? { bodyFatPercent } : {}),
     ...(unitPreference !== undefined ? { unitPreference } : {}),
     ...(language !== undefined ? { language } : {}),
-    ...(notificationPrefs !== undefined ? { notificationPrefs } : {})
+    ...(notificationPrefs !== undefined ? { notificationPrefs } : {}),
+    ...(goalTargetWeightKg !== undefined ? { goalTargetWeightKg } : {}),
+    ...(goalTargetBodyFatPercent !== undefined ? { goalTargetBodyFatPercent } : {}),
+    ...(weeklyWorkoutTarget !== undefined ? { weeklyWorkoutTarget } : {}),
+    ...(goalTargetDate !== undefined ? { goalTargetDate } : {}),
+    ...(goalSetAt !== undefined ? { goalSetAt } : {})
   });
 
   return jsonOk(res, updated);

@@ -10,10 +10,26 @@ import {
   requireObject,
   requireString
 } from "../../shared/validation/validators.js";
-import { createWorkoutLog, listWorkoutLogsWithPrs } from "./workout-logs.service.js";
+import {
+  createWorkoutLog,
+  getTodayWorkoutCompletion,
+  getWeeklyVolume,
+  listPersonalRecordsPaginated,
+  listWorkoutLogsWithPrs,
+  logWorkoutSession,
+  markWorkoutDone
+} from "./workout-logs.service.js";
 
 export async function getWorkoutLogs(req: AuthedRequest, res: Response) {
   const result = await listWorkoutLogsWithPrs(req.userId!);
+  return jsonOk(res, result);
+}
+
+export async function getPersonalRecordsPaginated(req: AuthedRequest, res: Response) {
+  const page = req.query.page ? parseInt(req.query.page as string) : 1;
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+  const q = typeof req.query.q === "string" ? req.query.q : undefined;
+  const result = await listPersonalRecordsPaginated(req.userId!, page, limit, q);
   return jsonOk(res, result);
 }
 
@@ -39,5 +55,42 @@ export async function postWorkoutLog(req: AuthedRequest, res: Response) {
     notes: payload.notes ?? null
   });
   return jsonOk(res, result, 201);
+}
+
+export async function getWorkoutCompletionToday(req: AuthedRequest, res: Response) {
+  const result = await getTodayWorkoutCompletion(req.userId!);
+  return jsonOk(res, result);
+}
+
+export async function postWorkoutLogSession(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const rawExercises = (body as { exercises?: unknown }).exercises;
+  if (!Array.isArray(rawExercises) || rawExercises.length === 0) {
+    throw new HttpError(400, "exercises must be a non-empty array");
+  }
+  const exercises = rawExercises.map((raw, i) => {
+    const item = requireObject(raw, `Invalid exercise at index ${i}`);
+    const weightKg = optionalNumber(item, "weightKg") ?? 0;
+    if (weightKg < 0 || weightKg > 1000) throw new HttpError(400, `Invalid weightKg at index ${i}`);
+    return {
+      exercise: requireString(item, "exercise", { trim: true, min: 2, max: 120 }),
+      sets: requireInt(item, "sets", { min: 1, max: 20 }),
+      reps: requireInt(item, "reps", { min: 1, max: 200 }),
+      weightKg,
+      notes: optionalString(item, "notes", { max: 500, trim: true }) ?? null
+    };
+  });
+  const result = await logWorkoutSession(req.userId!, exercises);
+  return jsonOk(res, result, 201);
+}
+
+export async function postWorkoutMarkDone(req: AuthedRequest, res: Response) {
+  const result = await markWorkoutDone(req.userId!);
+  return jsonOk(res, result, 201);
+}
+
+export async function getWeeklyVolumeHandler(req: AuthedRequest, res: Response) {
+  const result = await getWeeklyVolume(req.userId!);
+  return jsonOk(res, result);
 }
 

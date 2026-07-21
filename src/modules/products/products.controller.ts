@@ -38,7 +38,8 @@ export async function getProducts(req: Request, res: Response) {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const page = req.query.page ? parseInt(req.query.page as string) : 1;
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
-  const result = await listProducts({ categorySlug: category, status, featured, page, limit, q });
+  const sortBy = typeof req.query.sortBy === "string" ? req.query.sortBy : undefined;
+  const result = await listProducts({ categorySlug: category, status, featured, page, limit, q, sortBy });
   return jsonOk(res, result);
 }
 

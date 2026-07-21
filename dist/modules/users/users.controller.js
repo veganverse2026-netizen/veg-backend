@@ -1,7 +1,7 @@
 import { jsonOk } from "../../shared/http/json-response.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { optionalString, optionalStringArray, requireEmail, requireEnum, requireInt, requireObject, requireString } from "../../shared/validation/validators.js";
-import { DIETARY_PREFERENCES, DIETARY_STYLES } from "../../shared/constants/dietary.js";
+import { DIETARY_PREFERENCES, DIETARY_STYLES, normalizeDietaryPreferences } from "../../shared/constants/dietary.js";
 import { DEFAULT_NOTIFICATION_PREFS, LANGUAGES, NOTIFICATION_PREF_KEYS, UNIT_PREFERENCES } from "../../shared/constants/settings.js";
 import { changeUserPassword, deleteUserAccount, getPublicUserById, getUserById, getUserStats, searchUsers, updateUserProfile } from "./users.service.js";
 export async function getMe(req, res) {
@@ -22,30 +22,27 @@ export async function patchMe(req, res) {
     let email;
     if (body.email != null)
         email = requireEmail(body, "email");
-    let gymTrainerId;
-    if (body.gymTrainerId === null) {
-        gymTrainerId = null;
-    }
-    else if (body.gymTrainerId !== undefined) {
-        gymTrainerId = requireString(body, "gymTrainerId", { trim: true, min: 10, max: 40 });
+    // Trainer assignment is admin-only and always goes through the dedicated
+    // PATCH /admin/users/:id/gym-trainer route — never through self-profile
+    // edit, even for an admin acting on their own account. Enforced here (not
+    // just hidden in the UI); users request a change via /trainer-change-requests.
+    if (body.gymTrainerId !== undefined) {
+        throw new HttpError(403, "Trainer assignment is admin-only — use the Request Trainer Change form instead");
     }
     let heightCm;
     if (body.heightCm !== undefined && body.heightCm !== null) {
-        const v = Number(body.heightCm);
-        if (!Number.isFinite(v) || v < 100 || v > 260)
-            throw new HttpError(400, "Invalid heightCm");
-        heightCm = v;
+        heightCm = requireInt(body, "heightCm", { min: 50, max: 250 });
     }
     let weightKg;
     if (body.weightKg !== undefined && body.weightKg !== null) {
         const v = Number(body.weightKg);
-        if (!Number.isFinite(v) || v < 30 || v > 300)
+        if (!Number.isFinite(v) || v < 20 || v > 300)
             throw new HttpError(400, "Invalid weightKg");
         weightKg = v;
     }
     let age;
     if (body.age !== undefined && body.age !== null) {
-        age = requireInt(body, "age", { min: 12, max: 100 });
+        age = requireInt(body, "age", { min: 13, max: 100 });
     }
     let gender;
     if (body.gender !== undefined && body.gender !== null) {
@@ -63,11 +60,11 @@ export async function patchMe(req, res) {
     if (body.dietaryStyle !== undefined && body.dietaryStyle !== null) {
         dietaryStyle = requireEnum(body, "dietaryStyle", DIETARY_STYLES);
     }
-    const dietaryPreferences = optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES);
+    const dietaryPreferences = normalizeDietaryPreferences(optionalStringArray(body, "dietaryPreferences", DIETARY_PREFERENCES));
     let bodyFatPercent;
     if (body.bodyFatPercent !== undefined && body.bodyFatPercent !== null) {
         const v = Number(body.bodyFatPercent);
-        if (!Number.isFinite(v) || v < 3 || v > 60)
+        if (!Number.isFinite(v) || v < 1 || v > 70)
             throw new HttpError(400, "Invalid bodyFatPercent");
         bodyFatPercent = v;
     }
@@ -78,6 +75,48 @@ export async function patchMe(req, res) {
     let language;
     if (body.language !== undefined && body.language !== null) {
         language = requireEnum(body, "language", LANGUAGES);
+    }
+    let goalTargetWeightKg;
+    if (body.goalTargetWeightKg === null)
+        goalTargetWeightKg = null;
+    else if (body.goalTargetWeightKg !== undefined) {
+        const v = Number(body.goalTargetWeightKg);
+        if (!Number.isFinite(v) || v < 20 || v > 300)
+            throw new HttpError(400, "Invalid goalTargetWeightKg");
+        goalTargetWeightKg = v;
+    }
+    let goalTargetBodyFatPercent;
+    if (body.goalTargetBodyFatPercent === null)
+        goalTargetBodyFatPercent = null;
+    else if (body.goalTargetBodyFatPercent !== undefined) {
+        const v = Number(body.goalTargetBodyFatPercent);
+        if (!Number.isFinite(v) || v < 1 || v > 70)
+            throw new HttpError(400, "Invalid goalTargetBodyFatPercent");
+        goalTargetBodyFatPercent = v;
+    }
+    let weeklyWorkoutTarget;
+    if (body.weeklyWorkoutTarget === null)
+        weeklyWorkoutTarget = null;
+    else if (body.weeklyWorkoutTarget !== undefined) {
+        weeklyWorkoutTarget = requireInt(body, "weeklyWorkoutTarget", { min: 0, max: 14 });
+    }
+    let goalTargetDate;
+    if (body.goalTargetDate === null)
+        goalTargetDate = null;
+    else if (body.goalTargetDate !== undefined) {
+        const d = new Date(String(body.goalTargetDate));
+        if (isNaN(d.getTime()))
+            throw new HttpError(400, "Invalid goalTargetDate");
+        goalTargetDate = d;
+    }
+    let goalSetAt;
+    if (body.goalSetAt === null)
+        goalSetAt = null;
+    else if (body.goalSetAt !== undefined) {
+        const d = new Date(String(body.goalSetAt));
+        if (isNaN(d.getTime()))
+            throw new HttpError(400, "Invalid goalSetAt");
+        goalSetAt = d;
     }
     let notificationPrefs;
     if (body.notificationPrefs !== undefined && body.notificationPrefs !== null) {
@@ -96,7 +135,6 @@ export async function patchMe(req, res) {
         name: name == null ? undefined : name,
         email: email == null ? undefined : email,
         image: image == null ? undefined : image,
-        gymTrainerId,
         ...(heightCm !== undefined ? { heightCm } : {}),
         ...(weightKg !== undefined ? { weightKg } : {}),
         ...(age !== undefined ? { age } : {}),
@@ -108,7 +146,12 @@ export async function patchMe(req, res) {
         ...(bodyFatPercent !== undefined ? { bodyFatPercent } : {}),
         ...(unitPreference !== undefined ? { unitPreference } : {}),
         ...(language !== undefined ? { language } : {}),
-        ...(notificationPrefs !== undefined ? { notificationPrefs } : {})
+        ...(notificationPrefs !== undefined ? { notificationPrefs } : {}),
+        ...(goalTargetWeightKg !== undefined ? { goalTargetWeightKg } : {}),
+        ...(goalTargetBodyFatPercent !== undefined ? { goalTargetBodyFatPercent } : {}),
+        ...(weeklyWorkoutTarget !== undefined ? { weeklyWorkoutTarget } : {}),
+        ...(goalTargetDate !== undefined ? { goalTargetDate } : {}),
+        ...(goalSetAt !== undefined ? { goalSetAt } : {})
     });
     return jsonOk(res, updated);
 }

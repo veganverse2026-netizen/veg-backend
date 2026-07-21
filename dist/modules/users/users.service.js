@@ -25,6 +25,15 @@ const OWN_PROFILE_SELECT = {
     calorieTargetOverride: true,
     proteinTargetOverride: true,
     hydrationTargetOverride: true,
+    carbsTargetOverride: true,
+    fatTargetOverride: true,
+    goalTargetWeightKg: true,
+    goalStartWeightKg: true,
+    goalTargetBodyFatPercent: true,
+    weeklyWorkoutTarget: true,
+    goalTimelineWeeks: true,
+    goalTargetDate: true,
+    goalSetAt: true,
     unitPreference: true,
     language: true,
     notificationPrefs: true,
@@ -41,7 +50,12 @@ const OWN_PROFILE_SELECT = {
             title: true,
             bio: true,
             imageUrl: true,
-            linkedUserId: true
+            linkedUserId: true,
+            certifications: true,
+            specializations: true,
+            yearsExperience: true,
+            workingHours: true,
+            languages: true
         }
     }
 };
@@ -93,11 +107,6 @@ export async function updateUserProfile(userId, input) {
             throw new HttpError(400, "Goal is permanent and cannot be changed");
         }
     }
-    if (input.gymTrainerId !== undefined && input.gymTrainerId !== null) {
-        const t = await prisma.gymTrainer.findUnique({ where: { id: input.gymTrainerId } });
-        if (!t)
-            throw new HttpError(400, "Invalid gym trainer");
-    }
     const lockGoal = input.goal !== undefined && (input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD");
     try {
         const updated = await prisma.user.update({
@@ -106,7 +115,6 @@ export async function updateUserProfile(userId, input) {
                 name: input.name ?? undefined,
                 email: input.email ?? undefined,
                 image: input.image ?? undefined,
-                gymTrainerId: input.gymTrainerId === undefined ? undefined : input.gymTrainerId,
                 heightCm: input.heightCm === undefined ? undefined : input.heightCm,
                 weightKg: input.weightKg === undefined ? undefined : input.weightKg,
                 age: input.age === undefined ? undefined : input.age,
@@ -119,6 +127,11 @@ export async function updateUserProfile(userId, input) {
                 unitPreference: input.unitPreference === undefined ? undefined : input.unitPreference,
                 language: input.language === undefined ? undefined : input.language,
                 notificationPrefs: input.notificationPrefs === undefined ? undefined : input.notificationPrefs,
+                goalTargetWeightKg: input.goalTargetWeightKg === undefined ? undefined : input.goalTargetWeightKg,
+                goalTargetBodyFatPercent: input.goalTargetBodyFatPercent === undefined ? undefined : input.goalTargetBodyFatPercent,
+                weeklyWorkoutTarget: input.weeklyWorkoutTarget === undefined ? undefined : input.weeklyWorkoutTarget,
+                goalTargetDate: input.goalTargetDate === undefined ? undefined : input.goalTargetDate,
+                goalSetAt: input.goalSetAt === undefined ? undefined : input.goalSetAt,
                 ...(input.goal !== undefined ? { goalLocked: existing.goalLocked || Boolean(lockGoal) } : {})
             },
             select: OWN_PROFILE_SELECT

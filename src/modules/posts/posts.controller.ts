@@ -20,9 +20,13 @@ import {
   reportPost
 } from "./posts.service.js";
 
-export async function getPostsFeed(_req: Request, res: Response) {
-  const posts = await getFeed();
-  return jsonOk(res, posts);
+export async function getPostsFeed(req: Request, res: Response) {
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  const q = typeof req.query.q === "string" ? req.query.q : undefined;
+  const type = typeof req.query.type === "string" ? req.query.type : undefined;
+  const result = await getFeed({ limit, cursor, q, type });
+  return jsonOk(res, result);
 }
 
 export const requireUserMiddleware = requireUser;

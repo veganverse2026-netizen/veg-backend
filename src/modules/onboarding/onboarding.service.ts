@@ -13,7 +13,6 @@ export async function completeOnboarding(
     dietaryStyle?: string;
     dietaryPreferences?: string[];
     bodyFatPercent?: number;
-    gymTrainerId?: string | null;
     goalTargetWeightKg?: number;
     goalTimelineWeeks?: number;
     goalTargetDate?: Date;
@@ -24,15 +23,6 @@ export async function completeOnboarding(
 
   if (user.goalLocked && input.goal !== user.goal) {
     throw new HttpError(400, "Goal is permanent and cannot be changed");
-  }
-
-  let trainerConnect: { connect: { id: string } } | { disconnect: true } | undefined;
-  if (input.gymTrainerId === null) {
-    trainerConnect = { disconnect: true };
-  } else if (input.gymTrainerId) {
-    const t = await prisma.gymTrainer.findUnique({ where: { id: input.gymTrainerId } });
-    if (!t) throw new HttpError(400, "Invalid gym trainer");
-    trainerConnect = { connect: { id: input.gymTrainerId } };
   }
 
   const lockGoal = input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD";
@@ -69,7 +59,6 @@ export async function completeOnboarding(
       ...(input.dietaryStyle !== undefined ? { dietaryStyle: input.dietaryStyle } : {}),
       ...(input.dietaryPreferences !== undefined ? { dietaryPreferences: input.dietaryPreferences } : {}),
       ...(input.bodyFatPercent !== undefined ? { bodyFatPercent: input.bodyFatPercent } : {}),
-      ...(trainerConnect ? { gymTrainer: trainerConnect } : {}),
       ...goalTimelineData
     }
   });

@@ -3,9 +3,13 @@ import { HttpError } from "../../shared/errors/http-error.js";
 import { requireUser } from "../../shared/middleware/auth.middleware.js";
 import { optionalString, requireEnum, requireObject, requireString } from "../../shared/validation/validators.js";
 import { addComment, createPost, deleteDraft, deletePost, getFeed, getMyCommunityStats, listDrafts, saveDraft, toggleLike, toggleCommentLike, toggleBookmark, listBookmarkedPosts, acceptAnswer, reportPost } from "./posts.service.js";
-export async function getPostsFeed(_req, res) {
-    const posts = await getFeed();
-    return jsonOk(res, posts);
+export async function getPostsFeed(req, res) {
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    const result = await getFeed({ limit, cursor, q, type });
+    return jsonOk(res, result);
 }
 export const requireUserMiddleware = requireUser;
 export async function postCreate(req, res) {

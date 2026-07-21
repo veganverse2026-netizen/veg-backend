@@ -7,17 +7,23 @@ export async function completeOnboarding(userId, input) {
     if (user.goalLocked && input.goal !== user.goal) {
         throw new HttpError(400, "Goal is permanent and cannot be changed");
     }
-    let trainerConnect;
-    if (input.gymTrainerId === null) {
-        trainerConnect = { disconnect: true };
-    }
-    else if (input.gymTrainerId) {
-        const t = await prisma.gymTrainer.findUnique({ where: { id: input.gymTrainerId } });
-        if (!t)
-            throw new HttpError(400, "Invalid gym trainer");
-        trainerConnect = { connect: { id: input.gymTrainerId } };
-    }
     const lockGoal = input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD";
+    // A target weight + timeline only makes sense for a goal that isn't
+    // "maintain" — clear any previous timeline data if the user switches to
+    // LIFESTYLE (only possible before the goal locks), so stale values can
+    // never later influence meal-plan pacing.
+    const hasTimelineInput = input.goalTargetWeightKg !== undefined && input.goalTimelineWeeks !== undefined;
+    const goalTimelineData = lockGoal && hasTimelineInput
+        ? {
+            goalTargetWeightKg: input.goalTargetWeightKg,
+            goalTimelineWeeks: input.goalTimelineWeeks,
+            goalTargetDate: input.goalTargetDate ?? new Date(Date.now() + input.goalTimelineWeeks * 7 * 86400000),
+            goalStartWeightKg: input.weightKg,
+            goalSetAt: new Date()
+        }
+        : !lockGoal
+            ? { goalTargetWeightKg: null, goalTimelineWeeks: null, goalTargetDate: null, goalStartWeightKg: null, goalSetAt: null }
+            : {};
     await prisma.user.update({
         where: { id: userId },
         data: {
@@ -33,7 +39,7 @@ export async function completeOnboarding(userId, input) {
             ...(input.dietaryStyle !== undefined ? { dietaryStyle: input.dietaryStyle } : {}),
             ...(input.dietaryPreferences !== undefined ? { dietaryPreferences: input.dietaryPreferences } : {}),
             ...(input.bodyFatPercent !== undefined ? { bodyFatPercent: input.bodyFatPercent } : {}),
-            ...(trainerConnect ? { gymTrainer: trainerConnect } : {})
+            ...goalTimelineData
         }
     });
     return { success: true };

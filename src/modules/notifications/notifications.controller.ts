@@ -9,6 +9,7 @@ import {
   broadcastNotification,
   adminListNotifications,
   deleteNotification,
+  deleteMyNotification,
   getUnreadCount,
 } from "./notifications.service.js";
 
@@ -35,6 +36,14 @@ export async function patchRead(req: AuthedRequest, res: Response) {
 
 export async function patchAllRead(req: AuthedRequest, res: Response) {
   const data = await markAllRead(req.userId!);
+  return jsonOk(res, data);
+}
+
+export async function deleteMyNotificationRoute(req: AuthedRequest, res: Response) {
+  const id = String(req.params.id ?? "").trim();
+  if (!id) throw new HttpError(400, "id required");
+  const data = await deleteMyNotification(req.userId!, id);
+  if (!data) throw new HttpError(404, "Notification not found");
   return jsonOk(res, data);
 }
 

@@ -9,7 +9,9 @@ export type AddressInput = {
   state: string;
   pincode: string;
   country?: string;
-  phone?: string | null;
+  email: string;
+  phone: string;
+  secondaryPhone?: string | null;
   isDefault?: boolean;
 };
 
@@ -43,7 +45,9 @@ export async function createAddress(userId: string, input: AddressInput) {
         state: input.state,
         pincode: input.pincode,
         country: input.country ?? "IN",
-        phone: input.phone ?? null,
+        email: input.email,
+        phone: input.phone,
+        secondaryPhone: input.secondaryPhone ?? null,
         isDefault
       }
     });
@@ -68,7 +72,9 @@ export async function updateAddress(userId: string, addressId: string, input: Pa
         state: input.state ?? undefined,
         pincode: input.pincode ?? undefined,
         country: input.country ?? undefined,
-        phone: input.phone === undefined ? undefined : input.phone,
+        email: input.email ?? undefined,
+        phone: input.phone ?? undefined,
+        secondaryPhone: input.secondaryPhone === undefined ? undefined : input.secondaryPhone,
         isDefault: input.isDefault === undefined ? undefined : input.isDefault
       }
     });

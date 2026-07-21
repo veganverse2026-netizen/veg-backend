@@ -30,6 +30,8 @@ const OWN_PROFILE_SELECT = {
   fatTargetOverride: true,
   goalTargetWeightKg: true,
   goalStartWeightKg: true,
+  goalTargetBodyFatPercent: true,
+  weeklyWorkoutTarget: true,
   goalTimelineWeeks: true,
   goalTargetDate: true,
   goalSetAt: true,
@@ -49,7 +51,12 @@ const OWN_PROFILE_SELECT = {
       title: true,
       bio: true,
       imageUrl: true,
-      linkedUserId: true
+      linkedUserId: true,
+      certifications: true,
+      specializations: true,
+      yearsExperience: true,
+      workingHours: true,
+      languages: true
     }
   }
 } as const;
@@ -99,7 +106,6 @@ export async function updateUserProfile(
     name?: string | null;
     email?: string | null;
     image?: string | null;
-    gymTrainerId?: string | null;
     heightCm?: number | null;
     weightKg?: number | null;
     age?: number | null;
@@ -112,6 +118,11 @@ export async function updateUserProfile(
     unitPreference?: "METRIC" | "IMPERIAL";
     language?: string;
     notificationPrefs?: NotificationPrefs;
+    goalTargetWeightKg?: number | null;
+    goalTargetBodyFatPercent?: number | null;
+    weeklyWorkoutTarget?: number | null;
+    goalTargetDate?: Date | null;
+    goalSetAt?: Date | null;
   }
 ) {
   const existing = await prisma.user.findUnique({
@@ -126,11 +137,6 @@ export async function updateUserProfile(
     }
   }
 
-  if (input.gymTrainerId !== undefined && input.gymTrainerId !== null) {
-    const t = await prisma.gymTrainer.findUnique({ where: { id: input.gymTrainerId } });
-    if (!t) throw new HttpError(400, "Invalid gym trainer");
-  }
-
   const lockGoal =
     input.goal !== undefined && (input.goal === "FAT_LOSS" || input.goal === "MUSCLE_BUILD");
 
@@ -141,7 +147,6 @@ export async function updateUserProfile(
         name: input.name ?? undefined,
         email: input.email ?? undefined,
         image: input.image ?? undefined,
-        gymTrainerId: input.gymTrainerId === undefined ? undefined : input.gymTrainerId,
         heightCm: input.heightCm === undefined ? undefined : input.heightCm,
         weightKg: input.weightKg === undefined ? undefined : input.weightKg,
         age: input.age === undefined ? undefined : input.age,
@@ -154,6 +159,11 @@ export async function updateUserProfile(
         unitPreference: input.unitPreference === undefined ? undefined : input.unitPreference,
         language: input.language === undefined ? undefined : input.language,
         notificationPrefs: input.notificationPrefs === undefined ? undefined : input.notificationPrefs,
+        goalTargetWeightKg: input.goalTargetWeightKg === undefined ? undefined : input.goalTargetWeightKg,
+        goalTargetBodyFatPercent: input.goalTargetBodyFatPercent === undefined ? undefined : input.goalTargetBodyFatPercent,
+        weeklyWorkoutTarget: input.weeklyWorkoutTarget === undefined ? undefined : input.weeklyWorkoutTarget,
+        goalTargetDate: input.goalTargetDate === undefined ? undefined : input.goalTargetDate,
+        goalSetAt: input.goalSetAt === undefined ? undefined : input.goalSetAt,
         ...(input.goal !== undefined ? { goalLocked: existing.goalLocked || Boolean(lockGoal) } : {})
       },
       select: OWN_PROFILE_SELECT

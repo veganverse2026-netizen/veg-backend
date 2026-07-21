@@ -17,6 +17,27 @@ export async function listTrackers(userId) {
         take: 180
     });
 }
+/**
+ * Dedicated paginated query for the Progress History table. Kept separate from
+ * listTrackers (which stays a flat 180-row fetch) because the heatmap/streak/
+ * weekly-compare widgets on the same page need that full recent window
+ * regardless of which page of the history table is currently shown.
+ */
+export async function listTrackerHistoryPaginated(userId, page, limit) {
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(50, Math.max(1, limit));
+    const skip = (safePage - 1) * safeLimit;
+    const [total, entries] = await Promise.all([
+        prisma.tracker.count({ where: { userId } }),
+        prisma.tracker.findMany({
+            where: { userId },
+            orderBy: { date: "desc" },
+            skip,
+            take: safeLimit
+        })
+    ]);
+    return { entries, total, page: safePage, limit: safeLimit, pages: Math.ceil(total / safeLimit) };
+}
 export async function addTrackerEntry(userId, input) {
     const today = startOfDay(new Date());
     await prisma.tracker.create({
@@ -25,7 +46,10 @@ export async function addTrackerEntry(userId, input) {
             weightKg: input.weightKg,
             caloriesConsumed: input.caloriesConsumed,
             proteinIntake: input.proteinIntake,
-            workoutCompleted: input.workoutCompleted ?? false
+            workoutCompleted: input.workoutCompleted ?? false,
+            hydrationMl: input.hydrationMl,
+            sleepHours: input.sleepHours,
+            bodyFatPercent: input.bodyFatPercent
         }
     });
     await prisma.streak.upsert({
