@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
+import { aiChatLimiter } from "../../shared/middleware/rate-limit.middleware.js";
 import { jsonError } from "../../shared/http/json-response.js";
 import {
   getConversations,
@@ -37,7 +38,7 @@ aiAssistantRouter.delete("/ai-assistant/conversations/:id", requireUser, async (
   }
 });
 
-aiAssistantRouter.post("/ai-assistant/chat", requireUser, async (req: AuthedRequest, res) => {
+aiAssistantRouter.post("/ai-assistant/chat", requireUser, aiChatLimiter, async (req: AuthedRequest, res) => {
   try {
     await postChatMessage(req, res);
     return;
