@@ -261,3 +261,13 @@ export async function searchUsers(searchText: string, limit = 10) {
     }
   });
 }
+
+export async function setPushToken(userId: string, token: string) {
+  await prisma.user.update({ where: { id: userId }, data: { expoPushToken: token } });
+  return { ok: true };
+}
+
+export async function clearPushToken(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { expoPushToken: null } });
+  return { ok: true };
+}

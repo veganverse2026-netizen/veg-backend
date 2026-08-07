@@ -120,6 +120,7 @@ model User {
   unitPreference         UnitPreference @default(METRIC)
   language               String         @default("en")
   notificationPrefs      Json?
+  expoPushToken          String?
   role                   UserRole       @default(MEMBER)
   gymTrainerId           String?
   approvedGymPlanJson    String?        @db.Text

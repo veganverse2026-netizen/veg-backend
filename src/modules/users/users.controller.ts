@@ -21,17 +21,31 @@ import {
 } from "../../shared/constants/settings.js";
 import {
   changeUserPassword,
+  clearPushToken,
   deleteUserAccount,
   getPublicUserById,
   getUserById,
   getUserStats,
   searchUsers,
+  setPushToken,
   updateUserProfile
 } from "./users.service.js";
 
 export async function getMe(req: AuthedRequest, res: Response) {
   const user = await getUserById(req.userId!);
   return jsonOk(res, user);
+}
+
+export async function postPushToken(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const token = requireString(body, "token", { trim: true, min: 10, max: 400 });
+  const result = await setPushToken(req.userId!, token);
+  return jsonOk(res, result);
+}
+
+export async function deletePushToken(req: AuthedRequest, res: Response) {
+  const result = await clearPushToken(req.userId!);
+  return jsonOk(res, result);
 }
 
 export async function getUser(req: AuthedRequest, res: Response) {

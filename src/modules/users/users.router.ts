@@ -1,7 +1,17 @@
 import { Router } from "express";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
-import { getMe, getMeStats, getUser, getUsersSearch, patchMe, postChangePassword, postDeleteAccount } from "./users.controller.js";
+import {
+  deletePushToken,
+  getMe,
+  getMeStats,
+  getUser,
+  getUsersSearch,
+  patchMe,
+  postChangePassword,
+  postDeleteAccount,
+  postPushToken
+} from "./users.controller.js";
 
 export const usersRouter = Router();
 
@@ -35,6 +45,24 @@ usersRouter.get("/users/search", requireUser, async (req: AuthedRequest, res) =>
 usersRouter.get("/users/me/stats", requireUser, async (req: AuthedRequest, res) => {
   try {
     await getMeStats(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+usersRouter.post("/users/me/push-token", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await postPushToken(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+usersRouter.delete("/users/me/push-token", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await deletePushToken(req, res);
     return;
   } catch (err) {
     return jsonError(res, err);

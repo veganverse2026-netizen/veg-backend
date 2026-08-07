@@ -1,6 +1,7 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import type { NotificationType } from "@prisma/client";
 import { resolveNotificationPrefs, type NotificationPrefs } from "../../shared/constants/settings.js";
+import { sendExpoPush } from "../../infrastructure/push/expo-push.js";
 
 const TYPE_TO_PREF: Record<NotificationType, keyof NotificationPrefs> = {
   ORDER_UPDATE: "orderUpdates",
@@ -45,11 +46,17 @@ export async function createNotification(input: {
 }) {
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
-    select: { notificationPrefs: true }
+    select: { notificationPrefs: true, expoPushToken: true }
   });
   if (!user) return null;
   if (!notificationTypeEnabled(user.notificationPrefs, input.type)) return null;
-  return prisma.notification.create({ data: { ...input } });
+  const notification = await prisma.notification.create({ data: { ...input } });
+  void sendExpoPush([user.expoPushToken], {
+    title: input.title,
+    body: input.body,
+    data: { link: input.link ?? null, notificationId: notification.id }
+  });
+  return notification;
 }
 
 export async function broadcastNotification(input: {
@@ -60,17 +67,20 @@ export async function broadcastNotification(input: {
   roleFilter?: string;
 }) {
   const where = input.roleFilter ? { role: input.roleFilter as any } : undefined;
-  const users = await prisma.user.findMany({ where, select: { id: true, notificationPrefs: true } });
-  const data = users
-    .filter((u) => notificationTypeEnabled(u.notificationPrefs, input.type))
-    .map((u) => ({
-      userId: u.id,
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      link: input.link ?? null,
-    }));
+  const users = await prisma.user.findMany({ where, select: { id: true, notificationPrefs: true, expoPushToken: true } });
+  const targets = users.filter((u) => notificationTypeEnabled(u.notificationPrefs, input.type));
+  const data = targets.map((u) => ({
+    userId: u.id,
+    type: input.type,
+    title: input.title,
+    body: input.body,
+    link: input.link ?? null,
+  }));
   const result = await prisma.notification.createMany({ data });
+  void sendExpoPush(
+    targets.map((u) => u.expoPushToken),
+    { title: input.title, body: input.body, data: { link: input.link ?? null } }
+  );
   return { sent: result.count };
 }
 
