@@ -5,9 +5,14 @@ import { createNotification } from "../notifications/notifications.service.js";
 
 const MAX_FEED_POSTS = 50;
 
+// Post/comment likes are fetched as a _count (a SQL aggregate), never as the
+// full row set — the feed only ever needs "how many" and "did I like this,"
+// never the list of individual likers. Measured 1.58-3.42s vs a comparable
+// endpoint's 0.48-1.01s; fetching every like row (and every comment-like row)
+// for every post on every request was the dominant cost.
 const flatCommentInclude = {
   user: { select: { name: true } },
-  likes: true
+  _count: { select: { likes: true } }
 };
 
 type FlatComment = { id: string; parentId: string | null; [key: string]: unknown };
@@ -34,7 +39,50 @@ function buildCommentTree<T extends FlatComment>(flat: T[]): (T & { replies: unk
   return roots;
 }
 
-export async function getFeed(opts: { limit?: number; cursor?: string; q?: string; type?: string } = {}) {
+// Shared by getFeed and listBookmarkedPosts — both fetch posts+comments with
+// _count instead of full like arrays, then need the same "which of these did
+// this viewer like" resolution and the same count/tree flattening into the
+// {likesCount, likedByMe} shape the frontend expects.
+async function attachLikeState(
+  posts: Array<{ id: string; comments: FlatComment[]; _count: { likes: number }; [key: string]: unknown }>,
+  currentUserId?: string
+) {
+  let likedPostIds = new Set<string>();
+  let likedCommentIds = new Set<string>();
+  if (currentUserId) {
+    const postIds = posts.map((p) => p.id);
+    const commentIds = posts.flatMap((p) => p.comments.map((c) => c.id));
+    const [myPostLikes, myCommentLikes] = await Promise.all([
+      postIds.length
+        ? prisma.postLike.findMany({ where: { userId: currentUserId, postId: { in: postIds } }, select: { postId: true } })
+        : Promise.resolve([]),
+      commentIds.length
+        ? prisma.commentLike.findMany({ where: { userId: currentUserId, commentId: { in: commentIds } }, select: { commentId: true } })
+        : Promise.resolve([])
+    ]);
+    likedPostIds = new Set(myPostLikes.map((l) => l.postId));
+    likedCommentIds = new Set(myCommentLikes.map((l) => l.commentId));
+  }
+
+  function mapCommentTree(nodes: any[]): any[] {
+    return nodes.map((c) => {
+      const { _count, replies, ...rest } = c;
+      return { ...rest, likesCount: _count.likes, likedByMe: likedCommentIds.has(c.id), replies: mapCommentTree(replies) };
+    });
+  }
+
+  return posts.map((p) => {
+    const { _count, comments, ...rest } = p;
+    return {
+      ...rest,
+      likesCount: _count.likes,
+      likedByMe: likedPostIds.has(p.id),
+      comments: mapCommentTree(buildCommentTree(comments as FlatComment[]))
+    };
+  });
+}
+
+export async function getFeed(opts: { limit?: number; cursor?: string; q?: string; type?: string; currentUserId?: string } = {}) {
   const limit = Math.max(1, Math.min(MAX_FEED_POSTS, opts.limit ?? 10));
   const where: any = {};
   if (opts.q) {
@@ -55,7 +103,7 @@ export async function getFeed(opts: { limit?: number; cursor?: string; q?: strin
         orderBy: { createdAt: "asc" },
         include: flatCommentInclude
       },
-      likes: true
+      _count: { select: { likes: true } }
     },
     // secondary id order keeps pagination stable if two posts share a createdAt tick
     orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -65,8 +113,11 @@ export async function getFeed(opts: { limit?: number; cursor?: string; q?: strin
   const page = hasMore ? posts.slice(0, limit) : posts;
   const nextCursor = hasMore ? page[page.length - 1].id : null;
 
+  // /posts/feed is intentionally public (see posts.router.ts) — currentUserId
+  // is only set when the request happens to carry a valid token (optionalUser
+  // middleware).
   return {
-    posts: page.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) })),
+    posts: await attachLikeState(page as any, opts.currentUserId),
     nextCursor
   };
 }
@@ -85,9 +136,7 @@ export async function createPost(
       imageUrl: (input.imageUrl ?? null) as any
     } as any,
     include: {
-      user: { select: { id: true, name: true, goal: true } },
-      comments: { orderBy: { createdAt: "asc" }, include: flatCommentInclude },
-      likes: true
+      user: { select: { id: true, name: true, goal: true } }
     }
   });
 
@@ -97,7 +146,9 @@ export async function createPost(
     // io may be unavailable in some runtimes
   }
 
-  return { ...post, comments: buildCommentTree(post.comments as FlatComment[]) };
+  // A brand-new post has no comments or likes yet — no need to query for
+  // either, unlike getFeed/listBookmarkedPosts which return existing posts.
+  return { ...post, likesCount: 0, likedByMe: false, comments: [] };
 }
 
 export async function addComment(userId: string, input: { postId: string; content: string; parentId?: string | null }) {
@@ -195,13 +246,23 @@ export async function deletePost(userId: string, postId: string) {
 }
 
 export async function toggleBookmark(userId: string, postId: string) {
-  const existing = await prisma.postBookmark.findUnique({ where: { userId_postId: { userId, postId } } });
-  if (existing) {
-    await prisma.postBookmark.delete({ where: { userId_postId: { userId, postId } } });
-    return { bookmarked: false };
+  // Atomic, race-safe toggle: a plain findUnique-then-delete-or-create has a
+  // window where two concurrent calls can both see "not bookmarked" and both
+  // attempt create, and the second hits the unique constraint as an unhandled
+  // 500. deleteMany first removes the ambiguity — if a row existed, this is
+  // the one operation that atomically claims it; if nothing was deleted, fall
+  // through to create and treat a unique-constraint conflict (a concurrent
+  // call won the create) as "already bookmarked" rather than an error.
+  const { count } = await prisma.postBookmark.deleteMany({ where: { userId, postId } });
+  if (count > 0) return { bookmarked: false };
+
+  try {
+    await prisma.postBookmark.create({ data: { userId, postId } });
+    return { bookmarked: true };
+  } catch (err: any) {
+    if (err?.code === "P2002") return { bookmarked: true };
+    throw err;
   }
-  await prisma.postBookmark.create({ data: { userId, postId } });
-  return { bookmarked: true };
 }
 
 export async function listBookmarkedPosts(userId: string) {
@@ -213,12 +274,12 @@ export async function listBookmarkedPosts(userId: string) {
         orderBy: { createdAt: "asc" },
         include: flatCommentInclude
       },
-      likes: true
+      _count: { select: { likes: true } }
     },
     orderBy: { createdAt: "desc" }
   });
 
-  return posts.map((p) => ({ ...p, comments: buildCommentTree(p.comments as FlatComment[]) }));
+  return attachLikeState(posts as any, userId);
 }
 
 export async function listDrafts(userId: string) {

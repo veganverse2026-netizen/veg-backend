@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { jsonOk } from "../../shared/http/json-response.js";
-import { requireObject, requireString } from "../../shared/validation/validators.js";
+import { requireEmail, requireObject, requireString } from "../../shared/validation/validators.js";
 import {
   credentialsAuthorize,
   forgotRequestOtp,
@@ -23,7 +23,7 @@ export async function getAuthHealth(_req: Request, res: Response) {
 export async function postSignupRequestOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
   const name = requireString(body, "name", { trim: true, min: 2, max: 120 });
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const password = requireString(body, "password", { min: 8 });
   const result = await signupRequestOtp({ name, email, password });
   return jsonOk(res, result);
@@ -31,7 +31,7 @@ export async function postSignupRequestOtp(req: Request, res: Response) {
 
 export async function postSignupVerifyOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const otp = requireString(body, "otp", { trim: true, min: 6, max: 6 });
   const result = await signupVerifyOtp({ email, otp });
   return jsonOk(res, result);
@@ -39,7 +39,7 @@ export async function postSignupVerifyOtp(req: Request, res: Response) {
 
 export async function postLoginRequestOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const password = requireString(body, "password", { min: 8 });
   const result = await loginRequestOtp({ email, password });
   return jsonOk(res, result);
@@ -47,7 +47,7 @@ export async function postLoginRequestOtp(req: Request, res: Response) {
 
 export async function postLoginVerifyOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const otp = requireString(body, "otp", { trim: true, min: 6, max: 6 });
   const result = await loginVerifyOtp({ email, otp });
   return jsonOk(res, result);
@@ -55,14 +55,14 @@ export async function postLoginVerifyOtp(req: Request, res: Response) {
 
 export async function postForgotRequestOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const result = await forgotRequestOtp({ email });
   return jsonOk(res, result);
 }
 
 export async function postForgotReset(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const otp = requireString(body, "otp", { trim: true, min: 6, max: 6 });
   const password = requireString(body, "password", { min: 8 });
   const result = await forgotReset({ email, otp, password });
@@ -71,7 +71,7 @@ export async function postForgotReset(req: Request, res: Response) {
 
 export async function postCredentialsAuthorize(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const password = requireString(body, "password", { min: 8 });
   const result = await credentialsAuthorize({ email, password });
   return jsonOk(res, result);
@@ -79,7 +79,7 @@ export async function postCredentialsAuthorize(req: Request, res: Response) {
 
 export async function postLoginPassword(req: Request, res: Response) {
   const body = requireObject(req.body);
-  const email = requireString(body, "email", { trim: true, min: 3 });
+  const email = requireEmail(body);
   const password = requireString(body, "password", { min: 8 });
   const result = await loginPassword({ email, password });
   return jsonOk(res, result);

@@ -1,13 +1,74 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
+// Prisma's `contains`/`startsWith`/`endsWith` compile to a raw SQL LIKE pattern
+// without escaping the caller's input, so a literal "%" or "_" in a search term
+// is interpreted as a SQL wildcard (e.g. "%" alone matches everything). Escape
+// them — and the escape character itself — before they reach the LIKE pattern.
+function escapeLikeSpecials(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+// Optimal String Alignment distance (Levenshtein plus adjacent transpositions
+// as a single edit) — small and dependency-free, enough to catch common typos
+// like "protien" -> "protein" (a transposition) at catalog scale.
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+
+function typoTolerance(query: string): number {
+  if (query.length <= 4) return 1;
+  if (query.length <= 7) return 2;
+  return 3;
+}
+
+// Only ever called after an exact search already came back empty — finds
+// products whose name/tags contain a word within a small edit distance of
+// the query, ordered by closeness. A capped in-memory scan is fine here
+// since it's a fallback path, not the primary search, at this catalog scale.
+async function fuzzyProductMatch(query: string, baseWhere: Record<string, unknown>): Promise<string[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const threshold = typoTolerance(q);
+  const candidates = await prisma.product.findMany({
+    where: baseWhere as any,
+    select: { id: true, name: true, tags: true },
+    take: 500,
+  });
+  return candidates
+    .map((p) => {
+      const words = [...p.name.toLowerCase().split(/\s+/), ...p.tags.map((t) => t.toLowerCase())];
+      const best = Math.min(...words.map((w) => editDistance(q, w)));
+      return { id: p.id, best };
+    })
+    .filter((p) => p.best <= threshold)
+    .sort((a, b) => a.best - b.best)
+    .map((p) => p.id);
+}
+
 const SORT_ORDER_BY: Record<string, Array<Record<string, "asc" | "desc">>> = {
   "price-low": [{ price: "asc" }],
   "price-high": [{ price: "desc" }],
   newest: [{ createdAt: "desc" }],
-  // "popular"/"rating" have no real aggregated data behind them yet (review
-  // counts/ratings aren't computed anywhere) — fall back to the default
-  // ordering rather than sorting by a fabricated value.
+  // "popular" intentionally isn't mapped here — it falls through to the
+  // isFeatured+createdAt default below, which is a real (if coarse)
+  // popularity proxy. "rating" was removed from the UI's sort options
+  // entirely (no review/rating aggregation exists to sort by), but an old
+  // client or a direct API caller could still send sortBy=rating — falling
+  // back to the default here rather than erroring keeps that harmless.
 };
 
 export async function listProducts(opts: {
@@ -23,33 +84,47 @@ export async function listProducts(opts: {
   const limit = Math.min(50, Math.max(1, opts.limit ?? 20));
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = {};
-  if (opts.status) where.status = opts.status;
-  else where.status = "ACTIVE";
-  if (opts.featured !== undefined) where.isFeatured = opts.featured;
+  const baseWhere: Record<string, unknown> = {};
+  if (opts.status) baseWhere.status = opts.status;
+  else baseWhere.status = "ACTIVE";
+  if (opts.featured !== undefined) baseWhere.isFeatured = opts.featured;
   if (opts.categorySlug) {
-    where.category = { slug: opts.categorySlug };
+    baseWhere.category = { slug: opts.categorySlug };
   }
+
+  const where: Record<string, unknown> = { ...baseWhere };
   if (opts.q) {
+    const likeQ = escapeLikeSpecials(opts.q);
     where.OR = [
-      { name: { contains: opts.q, mode: "insensitive" } },
-      { description: { contains: opts.q, mode: "insensitive" } },
+      { name: { contains: likeQ, mode: "insensitive" } },
+      { description: { contains: likeQ, mode: "insensitive" } },
       { tags: { has: opts.q } },
     ];
   }
 
   const orderBy = (opts.sortBy && SORT_ORDER_BY[opts.sortBy]) || [{ isFeatured: "desc" }, { createdAt: "desc" }];
+  const categorySelect = { category: { select: { id: true, name: true, slug: true } } };
 
-  const [total, products] = await Promise.all([
+  let [total, products] = await Promise.all([
     prisma.product.count({ where: where as any }),
-    prisma.product.findMany({
-      where: where as any,
-      skip,
-      take: limit,
-      orderBy,
-      include: { category: { select: { id: true, name: true, slug: true } } },
-    }),
+    prisma.product.findMany({ where: where as any, skip, take: limit, orderBy, include: categorySelect }),
   ]);
+
+  // Typo-tolerant fallback: only kicks in when the exact search truly found
+  // nothing — never touches a query that already has real matches, and never
+  // touches the no-query (browse) path at all.
+  if (opts.q && total === 0) {
+    const matchIds = await fuzzyProductMatch(opts.q, baseWhere);
+    if (matchIds.length > 0) {
+      total = matchIds.length;
+      const matched = await prisma.product.findMany({ where: { id: { in: matchIds } }, include: categorySelect });
+      // Prisma can't ORDER BY a JS-computed rank, so re-sort by the fuzzy
+      // match's closeness order (closest edit distance first) here.
+      const rank = new Map(matchIds.map((id, i) => [id, i]));
+      matched.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+      products = matched.slice(skip, skip + limit);
+    }
+  }
 
   return { products, total, page, limit, pages: Math.ceil(total / limit) };
 }

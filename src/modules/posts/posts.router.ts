@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { asyncHandler } from "../../shared/http/async-handler.js";
+import { optionalUser } from "../../shared/middleware/auth.middleware.js";
 import {
   draftDelete,
   getBookmarkedPosts,
@@ -21,8 +22,10 @@ import {
 
 export const postsRouter = Router();
 
-// Public feed: no auth required
-postsRouter.get("/posts/feed", async (req, res) => {
+// Public feed: no auth required, but optionalUser decodes a token if one is
+// present so the response can include this viewer's own like state without
+// requiring login.
+postsRouter.get("/posts/feed", optionalUser, async (req, res) => {
   try {
     await getPostsFeed(req, res);
   } catch (err) {

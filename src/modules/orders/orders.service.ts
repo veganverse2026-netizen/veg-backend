@@ -156,13 +156,22 @@ export async function cancelMyOrder(userId: string, orderId: string, reason?: st
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Conditional update as an atomic guard: if two cancel requests race, Postgres
+    // holds the row lock from the first UPDATE until it commits, then the second
+    // UPDATE re-evaluates this WHERE clause and finds status no longer cancellable —
+    // so only one of the two ever proceeds to restore stock.
+    const guard = await tx.order.updateMany({
+      where: { id: orderId, userId, status: { in: USER_CANCELLABLE_STATUSES as unknown as ("PENDING" | "PAID" | "PROCESSING")[] } },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason ?? null },
+    });
+    if (guard.count === 0) {
+      throw new HttpError(409, "This order was already cancelled or is no longer cancellable.");
+    }
+
     for (const item of order.items) {
       await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
     }
-    return tx.order.update({
-      where: { id: orderId },
-      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason ?? null },
-    });
+    return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
   await createNotification({

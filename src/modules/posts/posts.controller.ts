@@ -20,12 +20,12 @@ import {
   reportPost
 } from "./posts.service.js";
 
-export async function getPostsFeed(req: Request, res: Response) {
+export async function getPostsFeed(req: AuthedRequest, res: Response) {
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
   const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   const type = typeof req.query.type === "string" ? req.query.type : undefined;
-  const result = await getFeed({ limit, cursor, q, type });
+  const result = await getFeed({ limit, cursor, q, type, currentUserId: req.userId });
   return jsonOk(res, result);
 }
 
