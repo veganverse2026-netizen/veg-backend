@@ -35,6 +35,13 @@ async function isConversationMember(userId: string, conversationId: string) {
   return Boolean(convo && (convo.userAId === userId || convo.userBId === userId));
 }
 
+async function isChallengeParticipant(userId: string, challengeId: string) {
+  const participant = await prisma.challengeParticipant.findUnique({
+    where: { challengeId_userId: { challengeId, userId } }
+  });
+  return Boolean(participant);
+}
+
 export function initSocketIo(server: HttpServer) {
   if (io) return io;
 
@@ -115,6 +122,16 @@ export function initSocketIo(server: HttpServer) {
       const userId = (socket.data as any)?.userId;
       if (!userId || !(await isConversationMember(userId, conversationId))) return;
       socket.to(`dm:${conversationId}`).emit("dm:typing", { conversationId, userId, isTyping: Boolean(payload?.isTyping) });
+    });
+
+    socket.on("challenge:join", async (challengeId: string) => {
+      if (typeof challengeId !== "string" || !challengeId.length) return;
+      const userId = (socket.data as any)?.userId;
+      if (!userId || !(await isChallengeParticipant(userId, challengeId))) return;
+      socket.join(`challenge:${challengeId}`);
+    });
+    socket.on("challenge:leave", (challengeId: string) => {
+      if (typeof challengeId === "string" && challengeId.length) socket.leave(`challenge:${challengeId}`);
     });
   });
 

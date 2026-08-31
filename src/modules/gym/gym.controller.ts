@@ -16,6 +16,9 @@ import {
 import {
   createGymProgressPhoto,
   createMissedWorkoutReport,
+  createTrainerBundle,
+  deleteTrainerBundle,
+  listBundlesForMemberAsTrainer,
   listGymProgressPhotos
 } from "./gym-member-extras.service.js";
 
@@ -105,6 +108,31 @@ export async function getMemberDetail(req: AuthedRequest, res: Response) {
   if (memberId.length < 8) throw new HttpError(400, "Invalid id");
   const detail = await getMemberDetailForTrainer(req.userId!, memberId);
   return jsonOk(res, detail);
+}
+
+export async function getMemberBundles(req: AuthedRequest, res: Response) {
+  const memberId = String(req.params.id ?? "").trim();
+  if (memberId.length < 8) throw new HttpError(400, "Invalid id");
+  const bundles = await listBundlesForMemberAsTrainer(req.userId!, memberId);
+  return jsonOk(res, bundles);
+}
+
+export async function postMemberBundle(req: AuthedRequest, res: Response) {
+  const memberId = String(req.params.id ?? "").trim();
+  if (memberId.length < 8) throw new HttpError(400, "Invalid id");
+  const body = requireObject(req.body);
+  const title = requireString(body, "title", { trim: true, min: 3, max: 80 });
+  const note = requireString(body, "note", { trim: true, min: 10, max: 500 });
+  const productIds = optionalFreeStringArray(body, "productIds") ?? [];
+  const bundle = await createTrainerBundle(req.userId!, memberId, { title, note, productIds });
+  return jsonOk(res, bundle, 201);
+}
+
+export async function deleteMemberBundle(req: AuthedRequest, res: Response) {
+  const bundleId = String(req.params.id ?? "").trim();
+  if (bundleId.length < 8) throw new HttpError(400, "Invalid id");
+  const result = await deleteTrainerBundle(req.userId!, bundleId);
+  return jsonOk(res, result);
 }
 
 export async function postAssignInitialPlan(req: AuthedRequest, res: Response) {

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { jsonOk } from "../../shared/http/json-response.js";
-import { requireEmail, requireObject, requireString } from "../../shared/validation/validators.js";
+import { optionalString, requireEmail, requireObject, requireString } from "../../shared/validation/validators.js";
 import {
   credentialsAuthorize,
   forgotRequestOtp,
@@ -33,7 +33,8 @@ export async function postSignupVerifyOtp(req: Request, res: Response) {
   const body = requireObject(req.body);
   const email = requireEmail(body);
   const otp = requireString(body, "otp", { trim: true, min: 6, max: 6 });
-  const result = await signupVerifyOtp({ email, otp });
+  const referralCode = optionalString(body, "referralCode", { trim: true, max: 20 });
+  const result = await signupVerifyOtp({ email, otp, referralCode });
   return jsonOk(res, result);
 }
 

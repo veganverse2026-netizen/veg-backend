@@ -10,6 +10,9 @@ import {
   postReviewPlanRequest,
   getMyMembers,
   getMemberDetail,
+  getMemberBundles,
+  postMemberBundle,
+  deleteMemberBundle,
   postAssignInitialPlan,
   getMyTrainerProfileHandler,
   patchMyTrainerProfile,
@@ -88,6 +91,33 @@ gymRouter.get("/gym/my-members", requireUser, requireTrainer, async (req: Authed
 gymRouter.get("/gym/my-members/:id", requireUser, requireTrainer, async (req: AuthedRequest, res) => {
   try {
     await getMemberDetail(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+gymRouter.get("/gym/my-members/:id/bundles", requireUser, requireTrainer, async (req: AuthedRequest, res) => {
+  try {
+    await getMemberBundles(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+gymRouter.post("/gym/my-members/:id/bundles", requireUser, requireTrainer, async (req: AuthedRequest, res) => {
+  try {
+    await postMemberBundle(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+gymRouter.delete("/gym/bundles/:id", requireUser, requireTrainer, async (req: AuthedRequest, res) => {
+  try {
+    await deleteMemberBundle(req, res);
     return;
   } catch (err) {
     return jsonError(res, err);

@@ -4,6 +4,8 @@ import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import {
   deletePushToken,
   getMe,
+  getMeBadges,
+  getMeReferrals,
   getMeStats,
   getUser,
   getUsersSearch,
@@ -45,6 +47,24 @@ usersRouter.get("/users/search", requireUser, async (req: AuthedRequest, res) =>
 usersRouter.get("/users/me/stats", requireUser, async (req: AuthedRequest, res) => {
   try {
     await getMeStats(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+usersRouter.get("/users/me/badges", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await getMeBadges(req, res);
+    return;
+  } catch (err) {
+    return jsonError(res, err);
+  }
+});
+
+usersRouter.get("/users/me/referrals", requireUser, async (req: AuthedRequest, res) => {
+  try {
+    await getMeReferrals(req, res);
     return;
   } catch (err) {
     return jsonError(res, err);

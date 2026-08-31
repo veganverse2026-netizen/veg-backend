@@ -4,6 +4,7 @@ import { requireUser } from "../../shared/middleware/auth.middleware.js";
 import { requireAdmin } from "../../shared/middleware/admin.middleware.js";
 import {
   getCategories,
+  getMyBundles,
   getProduct,
   getProductByIdRoute,
   getProducts,
@@ -14,6 +15,7 @@ import {
   removeCategory,
   removeProduct,
 } from "./products.controller.js";
+import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 
 export const productsRouter = Router();
 
@@ -28,6 +30,10 @@ productsRouter.get("/products/categories", async (req, res) => {
 
 productsRouter.get("/products/by-id/:id", async (req, res) => {
   try { await getProductByIdRoute(req, res); } catch (err) { return jsonError(res, err); }
+});
+
+productsRouter.get("/products/my-bundles", requireUser, async (req: AuthedRequest, res) => {
+  try { await getMyBundles(req, res); } catch (err) { return jsonError(res, err); }
 });
 
 productsRouter.get("/products/:slug", async (req, res) => {

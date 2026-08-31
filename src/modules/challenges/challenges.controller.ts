@@ -6,9 +6,12 @@ import {
   checkInChallenge,
   createChallenge,
   getChallengeDetail,
+  getChallengeLeaderboard,
   joinChallenge,
   leaveChallenge,
-  listActiveChallenges
+  listActiveChallenges,
+  listChallengeMessages,
+  postChallengeMessage
 } from "./challenges.service.js";
 
 const CATEGORIES = ["MEAL", "WORKOUT", "STEPS", "WATER", "MEDITATION", "RECIPE", "GYM_PROGRESS", "CUSTOM"] as const;
@@ -60,4 +63,21 @@ export async function postChallengeLeave(req: AuthedRequest, res: Response) {
 export async function postChallengeCheckIn(req: AuthedRequest, res: Response) {
   const result = await checkInChallenge(req.userId!, req.params.id);
   return jsonOk(res, result);
+}
+
+export async function getChallengeLeaderboardRoute(req: AuthedRequest, res: Response) {
+  const result = await getChallengeLeaderboard(req.params.id);
+  return jsonOk(res, result);
+}
+
+export async function getChallengeMessages(req: AuthedRequest, res: Response) {
+  const result = await listChallengeMessages(req.params.id, req.userId!);
+  return jsonOk(res, result);
+}
+
+export async function postChallengeMessageRoute(req: AuthedRequest, res: Response) {
+  const body = requireObject(req.body);
+  const text = requireString(body, "text", { trim: true, min: 1, max: 1000 });
+  const result = await postChallengeMessage(req.params.id, req.userId!, text);
+  return jsonOk(res, result, 201);
 }

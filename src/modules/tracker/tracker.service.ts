@@ -1,5 +1,6 @@
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { recomputeStreakCount } from "../../shared/domain/streak.js";
+import { checkAndAwardBadges } from "../../shared/domain/badges.js";
 
 function startOfDay(d: Date) {
   const copy = new Date(d);
@@ -75,8 +76,9 @@ export async function addTrackerEntry(
     create: { userId, date: today, completed: true }
   });
 
-  const currentStreak = await recomputeStreakCount(prisma, userId);
+  const { streakCount, freezeUsedForDate } = await recomputeStreakCount(prisma, userId);
+  const { newlyEarned } = await checkAndAwardBadges(userId);
 
-  return { success: true, streakCount: currentStreak };
+  return { success: true, streakCount, streakFreezeUsedForDate: freezeUsedForDate, newlyEarnedBadges: newlyEarned };
 }
 

@@ -3,6 +3,7 @@ import { prisma } from "../../infrastructure/db/prisma.js";
 import { createNotification } from "../notifications/notifications.service.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { recomputeStreakCount } from "../../shared/domain/streak.js";
+import { checkAndAwardBadges } from "../../shared/domain/badges.js";
 
 function startOfDay(d: Date) {
   const copy = new Date(d);
@@ -42,7 +43,7 @@ async function markWorkoutCompletedForStreak(tx: Prisma.TransactionClient, userI
     create: { userId, date: today, completed: true }
   });
 
-  await recomputeStreakCount(tx, userId);
+  return recomputeStreakCount(tx, userId);
 }
 
 type Pr = { exercise: string; bestWeightKg: number; bestVolume: number; updatedAt: Date };
@@ -231,8 +232,8 @@ export async function logWorkoutSession(
             }))
           });
         }
-        await markWorkoutCompletedForStreak(tx, userId);
-        return created;
+        const streak = await markWorkoutCompletedForStreak(tx, userId);
+        return { created, streak };
       },
       { timeout: 15000, maxWait: 10000 }
     );
@@ -241,12 +242,20 @@ export async function logWorkoutSession(
     throw err;
   }
 
-  // Side effect, not part of the atomic write — a notification failure
-  // shouldn't roll back an otherwise-successful log.
+  // Side effects, not part of the atomic write — neither should roll back an
+  // otherwise-successful log.
   await notifyTrainerOfCompletion(userId);
+  const { newlyEarned } = await checkAndAwardBadges(userId);
 
   const { logs, prs } = await listWorkoutLogsWithPrs(userId);
-  return { success: true, completion, logs, prs };
+  return {
+    success: true,
+    completion: completion.created,
+    streakFreezeUsedForDate: completion.streak.freezeUsedForDate,
+    newlyEarnedBadges: newlyEarned,
+    logs,
+    prs
+  };
 }
 
 /** "Done": marks the day completed without creating any WorkoutLog rows — no fake sets/reps/weight. */
@@ -261,8 +270,8 @@ export async function markWorkoutDone(userId: string) {
         const created = await tx.workoutCompletion.create({
           data: { userId, date: today, type: "DONE", completedAt: now }
         });
-        await markWorkoutCompletedForStreak(tx, userId);
-        return created;
+        const streak = await markWorkoutCompletedForStreak(tx, userId);
+        return { created, streak };
       },
       { timeout: 15000, maxWait: 10000 }
     );
@@ -272,8 +281,14 @@ export async function markWorkoutDone(userId: string) {
   }
 
   await notifyTrainerOfCompletion(userId);
+  const { newlyEarned } = await checkAndAwardBadges(userId);
 
-  return { success: true, completion };
+  return {
+    success: true,
+    completion: completion.created,
+    streakFreezeUsedForDate: completion.streak.freezeUsedForDate,
+    newlyEarnedBadges: newlyEarned
+  };
 }
 
 /**

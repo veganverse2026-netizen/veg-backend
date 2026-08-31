@@ -23,10 +23,16 @@ import {
   updateCategory,
   updateProduct,
 } from "./products.service.js";
+import { listMyRecommendedBundles } from "../gym/gym-member-extras.service.js";
 
 export async function getProductByIdRoute(req: Request, res: Response) {
   const result = await getProductById(req.params.id);
   return jsonOk(res, result);
+}
+
+export async function getMyBundles(req: AuthedRequest, res: Response) {
+  const bundles = await listMyRecommendedBundles(req.userId!);
+  return jsonOk(res, bundles);
 }
 
 // ─── Products ─────────────────────────────────────────────────────────────────

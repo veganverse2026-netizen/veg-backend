@@ -27,6 +27,7 @@ import { couponsRouter } from "../modules/coupons/coupons.router.js";
 import { analyticsRouter } from "../modules/analytics/analytics.router.js";
 import { trainerChangeRequestsRouter } from "../modules/trainer-change-requests/trainer-change-requests.router.js";
 import { aiAssistantRouter } from "../modules/ai-assistant/ai-assistant.router.js";
+import { scannerRouter } from "../modules/scanner/scanner.router.js";
 
 export const apiRouter = Router();
 
@@ -58,3 +59,4 @@ apiRouter.use(notificationsRouter);
 apiRouter.use(challengesRouter);
 apiRouter.use(trainerChangeRequestsRouter);
 apiRouter.use(aiAssistantRouter);
+apiRouter.use(scannerRouter);

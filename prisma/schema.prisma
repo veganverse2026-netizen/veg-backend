@@ -113,9 +113,23 @@ model User {
   goalTargetDate         DateTime?
   goalSetAt              DateTime?
   goalLocked             Boolean        @default(false)
+  // Adaptive nutrition targets — recalculated at most weekly from actual
+  // logged weight trend vs. the goal's planned pace (MacroFactor-style).
+  // Deliberately separate from calorieTargetOverride/etc: an explicit user
+  // override always wins over this (see meal-logs.service.ts's precedence
+  // chain), so a user who's manually set their own number is never silently
+  // second-guessed by the algorithm.
+  adaptiveCalorieTarget  Int?
+  adaptiveProteinTarget  Int?
+  adaptiveCarbsTarget    Int?
+  adaptiveFatTarget      Int?
+  adaptiveTargetNote     String?
+  adaptiveTargetUpdatedAt DateTime?
   onboardingDone         Boolean        @default(false)
   onboardingCompletedAt  DateTime?
   streakCount            Int            @default(0)
+  streakFreezesAvailable Int            @default(2)
+  streakFreezesResetAt   DateTime?
   mealPlanJson           String?        @db.Text
   unitPreference         UnitPreference @default(METRIC)
   language               String         @default("en")
@@ -124,6 +138,8 @@ model User {
   role                   UserRole       @default(MEMBER)
   gymTrainerId           String?
   approvedGymPlanJson    String?        @db.Text
+  referralCode           String         @unique
+  referredById           String?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
@@ -168,6 +184,12 @@ model User {
   wishlistItems          WishlistItem[]
   trainerChangeRequests  TrainerChangeRequest[]
   aiChatConversations    AiChatConversation[]
+  badges                 UserBadge[]
+  referredBy             User?          @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals              User[]         @relation("Referrals")
+  recommendedBundles     TrainerProductBundle[]
+  challengeMessages      ChallengeMessage[]
+  productScans           UserProductScan[]
 }
 
 // Chat history for the AI Assistant — each conversation belongs to exactly one
@@ -251,6 +273,7 @@ model GymTrainer {
   planRequests   WorkoutPlanChangeRequest[]
   mealPlanRequests MealPlanChangeRequest[]
   missedWorkoutReports MissedWorkoutReport[]
+  productBundles TrainerProductBundle[]
 
   @@index([sortOrder])
 }
@@ -370,10 +393,31 @@ model Streak {
   userId     String
   date       DateTime
   completed  Boolean   @default(false)
+  // True when this day was covered by a streak freeze rather than a real
+  // logged action — see shared/domain/streak.ts. Still counts as
+  // `completed` for the consecutive-day walk, just distinguished for UI/copy.
+  frozen     Boolean   @default(false)
 
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+// A user's earned achievements. Definitions (label/icon/criteria) live in
+// code (shared/domain/badges.ts), not the database — this table only
+// persists WHICH ones a user has actually earned and when, so re-checking
+// doesn't need to re-derive history every time and "earnedAt" is meaningful
+// for a celebration moment.
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeKey  String
+  earnedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeKey])
+  @@index([userId])
 }
 
 model CheatMeal {
@@ -752,10 +796,46 @@ model Product {
   orderItems  OrderItem[]
   reviews     Review[]
   wishlistedBy WishlistItem[]
+  bundleItems TrainerProductBundleItem[]
 
   @@index([categoryId, status])
   @@index([status, isFeatured])
   @@index([slug])
+}
+
+// A trainer-curated set of existing store products recommended to one
+// specific assigned member, with a note explaining why — ties the real
+// trainer relationship directly to commerce without any new payment or
+// subscription infrastructure (this app has no recurring billing at all;
+// checkout is one-time only). Reuses the exact trainer/member ownership
+// pattern already established in workout-plan-requests.service.ts
+// (GymTrainer.linkedUserId → trainer's own User account, member.gymTrainerId
+// must match).
+model TrainerProductBundle {
+  id        String   @id @default(cuid())
+  trainerId String
+  memberId  String
+  title     String
+  note      String   @db.Text
+  createdAt DateTime @default(now())
+
+  trainer   GymTrainer                  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  member    User                        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  items     TrainerProductBundleItem[]
+
+  @@index([memberId])
+  @@index([trainerId])
+}
+
+model TrainerProductBundleItem {
+  id        String @id @default(cuid())
+  bundleId  String
+  productId String
+
+  bundle    TrainerProductBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product   Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([bundleId, productId])
 }
 
 model WishlistItem {
@@ -946,15 +1026,22 @@ model Challenge {
   createdBy    User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
   participants ChallengeParticipant[]
   checkIns     ChallengeCheckIn[]
+  messages     ChallengeMessage[]
 
   @@index([endDate])
 }
 
 model ChallengeParticipant {
-  id          String   @id @default(cuid())
-  challengeId String
-  userId      String
-  joinedAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  challengeId      String
+  userId           String
+  joinedAt         DateTime @default(now())
+  // One grace day per challenge join — a bounded, per-participation freeze
+  // pool (separate from User.streakFreezesAvailable, which is the ongoing
+  // main-streak allowance) since a challenge is itself bounded in duration;
+  // one grace day is proportionally generous without needing to reconcile
+  // against a shared cross-system pool.
+  freezesAvailable Int      @default(1)
 
   challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -968,10 +1055,60 @@ model ChallengeCheckIn {
   userId      String
   date        DateTime
   createdAt   DateTime @default(now())
+  // True when this day was bridged by the participant's one grace-day
+  // freeze rather than a real check-in — mirrors Streak.frozen.
+  frozen      Boolean  @default(false)
 
   challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([challengeId, userId, date])
+}
+
+// Club-style discussion scoped to one challenge's own participants — a
+// different surface from the main community feed or 1:1 DMs, matching the
+// market-research recommendation for dedicated per-challenge messaging.
+model ChallengeMessage {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  text        String   @db.Text
+  createdAt   DateTime @default(now())
+
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId, createdAt])
+}
+
+// Shared, barcode-keyed cache of a product's vegan-compliance verdict —
+// looked up once from Open Food Facts, reused by every user who scans the
+// same barcode instead of re-fetching/re-analyzing every time. See
+// shared/domain/veganScanner.ts for how verdict/citedIngredients get
+// computed (real per-ingredient citations, not an opaque score).
+model ScannedProductCache {
+  barcode          String   @id
+  productName      String?
+  brand            String?
+  imageUrl         String?
+  ingredientsText  String?  @db.Text
+  verdict          String
+  citedIngredients Json
+  verdictSource    String
+  fetchedAt        DateTime @default(now())
+
+  scans            UserProductScan[]
+}
+
+model UserProductScan {
+  id        String   @id @default(cuid())
+  userId    String
+  barcode   String
+  scannedAt DateTime @default(now())
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   ScannedProductCache @relation(fields: [barcode], references: [barcode], onDelete: Cascade)
+
+  @@index([userId, scannedAt])
 }
 

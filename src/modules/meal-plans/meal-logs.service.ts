@@ -3,6 +3,7 @@ import { HttpError } from "../../shared/errors/http-error.js";
 import { createNotification } from "../notifications/notifications.service.js";
 import { computeCalorieTarget } from "./meal-plan-generator.js";
 import { computeMacroTargets, computeHydrationTarget, type GoalKind } from "../../shared/domain/calorieEngine.js";
+import { maybeRecomputeAdaptiveTarget } from "../../shared/domain/adaptiveTargets.js";
 
 const SLOTS = ["breakfast", "morning-snack", "lunch", "evening-snack", "dinner"] as const;
 
@@ -73,11 +74,19 @@ export async function getDailySummary(userId: string, dateStr?: string) {
         mealPlanJson: true, weightKg: true, heightCm: true, age: true, gender: true,
         activityLevel: true, goal: true, dietaryStyle: true, dietaryPreferences: true,
         calorieTargetOverride: true, proteinTargetOverride: true, hydrationTargetOverride: true,
-        carbsTargetOverride: true, fatTargetOverride: true
+        carbsTargetOverride: true, fatTargetOverride: true,
+        adaptiveCalorieTarget: true, adaptiveProteinTarget: true, adaptiveCarbsTarget: true,
+        adaptiveFatTarget: true, adaptiveTargetNote: true, adaptiveTargetUpdatedAt: true
       }
     })
   ]);
   if (!user) throw new HttpError(404, "User not found");
+
+  // Fire-and-forget: recompute is at-most-weekly and this request already
+  // has whatever adaptive numbers exist from before today, so a fresh
+  // recompute (if due) shows up on the *next* summary fetch rather than
+  // blocking this one on an extra write.
+  void maybeRecomputeAdaptiveTarget(userId).catch((err) => console.error("[meal-logs] adaptive target recompute failed:", err));
 
   const consumed = logs.filter(l => l.status === "completed").reduce(
     (acc, l) => ({
@@ -91,10 +100,13 @@ export async function getDailySummary(userId: string, dateStr?: string) {
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, waterMl: 0 }
   );
 
-  // Targets: active plan meta wins, then overrides, then computed defaults
+  // Targets: active plan meta wins, then overrides, then the adaptive
+  // target (only ever present for users with neither of those — see
+  // adaptiveTargets.ts, which refuses to compute one at all once a manual
+  // override is set), then computed defaults.
   let plan: any = null;
   try { plan = user.mealPlanJson ? JSON.parse(user.mealPlanJson) : null; } catch {}
-  const calorieTarget = plan?.meta?.dailyCalories ?? user.calorieTargetOverride ?? computeCalorieTarget(user);
+  const calorieTarget = plan?.meta?.dailyCalories ?? user.calorieTargetOverride ?? user.adaptiveCalorieTarget ?? computeCalorieTarget(user);
   // Computed macro defaults (protein by goal, fat as a % of calories, carbs
   // as the remainder) — only when weightKg is known, same guard the old
   // protein-only default used. Goal defaults to LIFESTYLE (1.6 g/kg protein)
@@ -102,7 +114,7 @@ export async function getDailySummary(userId: string, dateStr?: string) {
   const computedMacros = user.weightKg
     ? computeMacroTargets({ dailyCalorieTarget: calorieTarget, goal: (user.goal as GoalKind) ?? "LIFESTYLE", weightKg: user.weightKg })
     : null;
-  const proteinTarget = plan?.meta?.protein ?? user.proteinTargetOverride ?? computedMacros?.proteinG ?? null;
+  const proteinTarget = plan?.meta?.protein ?? user.proteinTargetOverride ?? user.adaptiveProteinTarget ?? computedMacros?.proteinG ?? null;
   // Hydration: profile override wins (stored in liters, but tolerate ml
   // values defensively); default is now bodyweight-based (35 ml/kg) instead
   // of a flat 3.5L for everyone.
@@ -111,16 +123,20 @@ export async function getDailySummary(userId: string, dateStr?: string) {
   const targets = {
     calories: calorieTarget,
     protein: proteinTarget,
-    carbs: plan?.meta?.carbs ?? user.carbsTargetOverride ?? computedMacros?.carbsG ?? null,
-    fat: plan?.meta?.fat ?? user.fatTargetOverride ?? computedMacros?.fatG ?? null,
+    carbs: plan?.meta?.carbs ?? user.carbsTargetOverride ?? user.adaptiveCarbsTarget ?? computedMacros?.carbsG ?? null,
+    fat: plan?.meta?.fat ?? user.fatTargetOverride ?? user.adaptiveFatTarget ?? computedMacros?.fatG ?? null,
     fiber: plan?.meta?.fiber ?? Math.round((calorieTarget / 1000) * 14),
     waterMl
   };
 
+  const adaptive = user.adaptiveTargetUpdatedAt
+    ? { note: user.adaptiveTargetNote, updatedAt: user.adaptiveTargetUpdatedAt.toISOString(), active: user.calorieTargetOverride == null }
+    : null;
+
   const handledSlots = new Set(logs.filter(l => SLOTS.includes(l.slot as any)).map(l => l.slot));
   const completion = Math.round((handledSlots.size / SLOTS.length) * 100);
 
-  return { date: from.toISOString(), consumed, targets, completion, logs };
+  return { date: from.toISOString(), consumed, targets, completion, logs, adaptive };
 }
 
 /* Fire "daily goals completed" once per day, when all 5 meal slots are

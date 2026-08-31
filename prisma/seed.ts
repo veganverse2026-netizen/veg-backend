@@ -1,5 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
+import crypto from "crypto";
+
+function seedReferralCode(): string {
+  return crypto.randomBytes(5).toString("hex").slice(0, 8);
+}
 
 const prisma = new PrismaClient();
 
@@ -598,6 +603,7 @@ async function linkDemoTrainerUser() {
         role: "GYM_TRAINER",
         onboardingDone: true,
         passwordHash,
+        referralCode: seedReferralCode(),
         goal: "MUSCLE_BUILD",
         gender: "OTHER",
         activityLevel: "MODERATE",
@@ -662,6 +668,7 @@ async function seedAdminUser() {
         role: "ADMIN",
         onboardingDone: true,
         passwordHash,
+        referralCode: seedReferralCode(),
         goal: "LIFESTYLE",
         gender: "OTHER",
         activityLevel: "MODERATE",

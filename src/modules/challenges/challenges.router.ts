@@ -4,11 +4,14 @@ import { asyncHandler } from "../../shared/http/async-handler.js";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import {
   getChallenge,
+  getChallengeLeaderboardRoute,
+  getChallengeMessages,
   getChallenges,
   postChallenge,
   postChallengeCheckIn,
   postChallengeJoin,
-  postChallengeLeave
+  postChallengeLeave,
+  postChallengeMessageRoute
 } from "./challenges.controller.js";
 
 export const challengesRouter = Router();
@@ -30,3 +33,9 @@ challengesRouter.post("/challenges/:id/join", requireUser, asyncHandler(postChal
 challengesRouter.post("/challenges/:id/leave", requireUser, asyncHandler(postChallengeLeave));
 
 challengesRouter.post("/challenges/:id/checkin", requireUser, asyncHandler(postChallengeCheckIn));
+
+challengesRouter.get("/challenges/:id/leaderboard", requireUser, asyncHandler(getChallengeLeaderboardRoute));
+
+challengesRouter.get("/challenges/:id/messages", requireUser, asyncHandler(getChallengeMessages));
+
+challengesRouter.post("/challenges/:id/messages", requireUser, asyncHandler(postChallengeMessageRoute));

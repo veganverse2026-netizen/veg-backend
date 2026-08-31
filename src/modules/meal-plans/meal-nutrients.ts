@@ -2,7 +2,7 @@ import { prisma } from "../../infrastructure/db/prisma.js";
 import { MEAL_LIBRARY } from "./meal-library.js";
 
 /**
- * Vegan Nutrient Guardian — tracks FOOD-SOURCE COVERAGE of the five
+ * Vegan Nutrient Guardian — tracks FOOD-SOURCE COVERAGE of six
  * vegan-critical micronutrients, not fabricated milligram counts. A day
  * "covers" a nutrient when the member logged at least one recognized food
  * source of it. Honest, explainable, and actionable ("add chia or walnuts").
@@ -38,6 +38,12 @@ export const GUARDIAN_NUTRIENTS = [
     targetDaysPerWeek: 5,
     tip: "A tablespoon of chia, flax or hemp seeds — or a handful of walnuts — covers plant omega-3.",
     sources: ["chia", "flax", "hemp", "walnut", "pine nut"],
+  },
+  {
+    key: "iodine", label: "Iodine", icon: "🌊",
+    targetDaysPerWeek: 7,
+    tip: "Iodized salt, nori and kelp are the main vegan iodine sources — most sea salt and Himalayan salt aren't iodized, so check the label.",
+    sources: ["iodized salt", "nori", "kelp", "kombu", "wakame", "dulse", "seaweed"],
   },
 ] as const;
 

@@ -2,6 +2,7 @@ import type { PlanChangeStatus, UserRole } from "@prisma/client";
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { createNotification } from "../notifications/notifications.service.js";
+import { generateUniqueReferralCode } from "../../shared/domain/referrals.js";
 
 export async function getAdminOverview() {
   const [users, posts, recipes, gymTrainers, pendingPlanRequests, members, trainers] = await Promise.all([
@@ -215,7 +216,8 @@ async function createTrainerLoginAccount(name: string, email: string, password: 
       name,
       role: "GYM_TRAINER",
       onboardingDone: true,
-      passwordHash: await hash(password, 10)
+      passwordHash: await hash(password, 10),
+      referralCode: await generateUniqueReferralCode()
     },
     select: { id: true }
   });

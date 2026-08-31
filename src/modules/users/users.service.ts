@@ -2,6 +2,8 @@ import { compare, hash } from "bcryptjs";
 import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { resolveNotificationPrefs, type NotificationPrefs } from "../../shared/constants/settings.js";
+import { computeUserImpactStats } from "../../shared/domain/impact.js";
+import { checkAndAwardBadges } from "../../shared/domain/badges.js";
 
 // Single source of truth for what a user sees about themselves. passwordHash
 // is selected only to derive hasPassword and is stripped by toOwnProfile().
@@ -219,14 +221,15 @@ export async function deleteUserAccount(userId: string, confirmEmail: string) {
 }
 
 export async function getUserStats(userId: string) {
-  const [user, workoutCount, postsCount, likesReceived] = await Promise.all([
+  const [user, workoutCount, postsCount, likesReceived, impact] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { streakCount: true, createdAt: true }
+      select: { streakCount: true, streakFreezesAvailable: true, createdAt: true }
     }),
     prisma.workoutLog.count({ where: { userId } }),
     prisma.post.count({ where: { userId } }),
     prisma.postLike.count({ where: { post: { userId } } }),
+    computeUserImpactStats(userId)
   ]);
 
   if (!user) return null;
@@ -236,7 +239,32 @@ export async function getUserStats(userId: string) {
     (Date.now() - new Date(user.createdAt).getTime()) / msPerMonth
   ));
 
-  return { workoutCount, postsCount, likesReceived, streakCount: user.streakCount, monthsVegan };
+  return {
+    workoutCount,
+    postsCount,
+    likesReceived,
+    streakCount: user.streakCount,
+    streakFreezesAvailable: user.streakFreezesAvailable,
+    monthsVegan,
+    impact
+  };
+}
+
+export async function getUserBadges(userId: string) {
+  return checkAndAwardBadges(userId);
+}
+
+export async function getUserReferralInfo(userId: string) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { referralCode: true }
+  });
+  const totalReferred = await prisma.user.count({ where: { referredById: userId } });
+
+  const frontendUrl = (process.env.FRONTEND_URL ?? "").replace(/\/+$/, "");
+  const referralLink = frontendUrl ? `${frontendUrl}/auth/register?ref=${user.referralCode}` : null;
+
+  return { referralCode: user.referralCode, referralLink, totalReferred };
 }
 
 export async function searchUsers(searchText: string, limit = 10) {

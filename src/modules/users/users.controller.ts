@@ -24,7 +24,9 @@ import {
   clearPushToken,
   deleteUserAccount,
   getPublicUserById,
+  getUserBadges,
   getUserById,
+  getUserReferralInfo,
   getUserStats,
   searchUsers,
   setPushToken,
@@ -222,6 +224,16 @@ export async function postDeleteAccount(req: AuthedRequest, res: Response) {
 export async function getMeStats(req: AuthedRequest, res: Response) {
   const stats = await getUserStats(req.userId!);
   return jsonOk(res, stats);
+}
+
+export async function getMeBadges(req: AuthedRequest, res: Response) {
+  const result = await getUserBadges(req.userId!);
+  return jsonOk(res, result);
+}
+
+export async function getMeReferrals(req: AuthedRequest, res: Response) {
+  const result = await getUserReferralInfo(req.userId!);
+  return jsonOk(res, result);
 }
 
 export async function getUsersSearch(req: AuthedRequest, res: Response) {

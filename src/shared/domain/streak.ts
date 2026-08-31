@@ -1,12 +1,8 @@
 import { Prisma } from "@prisma/client";
 
-// Shared between tracker.service.ts's addTrackerEntry and workout-logs.service.ts's
-// markWorkoutCompletedForStreak so both compute the consecutive-day streak the
-// same way, from the same bounded query — this used to be copy-pasted in both
-// places with an unbounded findMany (no `take`, no date floor), which meant every
-// tracker entry and every workout completion re-fetched a long-tenured user's
-// ENTIRE Streak history just to walk back a few days.
 const STREAK_LOOKBACK_DAYS = 400;
+const MONTHLY_STREAK_FREEZES = 2;
+const FREEZE_RESET_INTERVAL_DAYS = 30;
 
 function startOfDay(d: Date) {
   const copy = new Date(d);
@@ -18,13 +14,34 @@ function dateKey(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-/**
- * Recomputes the caller's current consecutive-day streak from Streak rows no
- * older than STREAK_LOOKBACK_DAYS (~13 months — comfortably beyond any
- * realistic unbroken streak) and persists it to User.streakCount. Caller is
- * responsible for upserting today's Streak row first.
- */
-export async function recomputeStreakCount(client: Prisma.TransactionClient, userId: string): Promise<number> {
+async function ensureFreezesReplenished(client: Prisma.TransactionClient, userId: string) {
+  const user = await client.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { streakFreezesAvailable: true, streakFreezesResetAt: true }
+  });
+
+  if (user.streakFreezesResetAt && user.streakFreezesResetAt > new Date()) {
+    return user.streakFreezesAvailable;
+  }
+
+  const nextReset = new Date();
+  nextReset.setDate(nextReset.getDate() + FREEZE_RESET_INTERVAL_DAYS);
+  await client.user.update({
+    where: { id: userId },
+    data: { streakFreezesAvailable: MONTHLY_STREAK_FREEZES, streakFreezesResetAt: nextReset }
+  });
+  return MONTHLY_STREAK_FREEZES;
+}
+
+export interface StreakRecomputeResult {
+  streakCount: number;
+
+  freezeUsedForDate?: string;
+}
+
+export async function recomputeStreakCount(client: Prisma.TransactionClient, userId: string): Promise<StreakRecomputeResult> {
+  const freezesAvailable = await ensureFreezesReplenished(client, userId);
+
   const cutoff = startOfDay(new Date());
   cutoff.setDate(cutoff.getDate() - STREAK_LOOKBACK_DAYS);
 
@@ -37,12 +54,32 @@ export async function recomputeStreakCount(client: Prisma.TransactionClient, use
   const dateKeys = new Set(recentDates.map((d) => dateKey(d.date)));
 
   let currentStreak = 0;
+  let freezeUsedForDate: string | undefined;
   const cursor = startOfDay(new Date());
-  while (dateKeys.has(dateKey(cursor))) {
-    currentStreak += 1;
-    cursor.setDate(cursor.getDate() - 1);
+  const today = dateKey(cursor);
+
+  while (true) {
+    const key = dateKey(cursor);
+    if (dateKeys.has(key)) {
+      currentStreak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
+    if (!freezeUsedForDate && freezesAvailable > 0 && key !== today) {
+      await client.streak.upsert({
+        where: { userId_date: { userId, date: cursor } },
+        update: { completed: true, frozen: true },
+        create: { userId, date: cursor, completed: true, frozen: true }
+      });
+      await client.user.update({ where: { id: userId }, data: { streakFreezesAvailable: { decrement: 1 } } });
+      freezeUsedForDate = key;
+      currentStreak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
+    break;
   }
 
   await client.user.update({ where: { id: userId }, data: { streakCount: currentStreak } });
-  return currentStreak;
+  return { streakCount: currentStreak, freezeUsedForDate };
 }

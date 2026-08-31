@@ -6,6 +6,8 @@ import { signAccessToken, verifyAccessToken } from "../../shared/utils/jwt.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { generateOtpCode, hashOtpCode, otpExpiry, safeEqualHash } from "../../shared/utils/otp.js";
 import { sendOtpEmail } from "../../infrastructure/mailer/mailer.js";
+import { generateUniqueReferralCode, resolveReferrerId } from "../../shared/domain/referrals.js";
+import { checkAndAwardBadges } from "../../shared/domain/badges.js";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -42,7 +44,7 @@ export async function signupRequestOtp(input: { name: string; email: string; pas
   return response;
 }
 
-export async function signupVerifyOtp(input: { email: string; otp: string }) {
+export async function signupVerifyOtp(input: { email: string; otp: string; referralCode?: string }) {
   const email = input.email.toLowerCase().trim();
 
   const challenge = await prisma.otpChallenge.findFirst({
@@ -64,16 +66,33 @@ export async function signupVerifyOtp(input: { email: string; otp: string }) {
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) throw new HttpError(400, "Email already in use");
 
+  const [referralCode, referredById] = await Promise.all([
+    generateUniqueReferralCode(),
+    resolveReferrerId(input.referralCode)
+  ]);
+
   const user =
     (await prisma.user.create({
       data: {
         name: challenge.name ?? null,
         email,
-        passwordHash: challenge.passwordHash
+        passwordHash: challenge.passwordHash,
+        referralCode,
+        referredById
       }
     })) ?? null;
 
   await prisma.otpChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
+
+  // The new user isn't the one who'll next hit an endpoint that would
+  // otherwise lazily re-check badges — the referrer is, and they have no
+  // reason to visit anything right now. Check their referral badges here,
+  // at the one moment this specific event can be observed at all. Not
+  // awaited into the response — a referrer's badge check failing shouldn't
+  // block the new user's own signup.
+  if (referredById) {
+    checkAndAwardBadges(referredById).catch((err: unknown) => console.error("[signup] referral badge check failed:", err));
+  }
 
   const otpProof = crypto.randomBytes(24).toString("hex");
   await prisma.verificationToken.create({
@@ -276,7 +295,8 @@ export async function loginGoogle(input: { idToken: string }) {
         email,
         name,
         image,
-        emailVerified: new Date()
+        emailVerified: new Date(),
+        referralCode: await generateUniqueReferralCode()
       }
     }));
 
