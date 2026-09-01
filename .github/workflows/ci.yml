@@ -1,0 +1,14 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: veganverse2026-netizen/veganverse-infra/.github/workflows/node-ci.yml@main
+    with:
+      package-manager: npm
+      node-version: '22'
+      prisma: true

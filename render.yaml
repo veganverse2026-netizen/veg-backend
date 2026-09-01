@@ -1,0 +1,59 @@
+# Render Blueprint — connect this repo on Render as a "Blueprint" and it provisions
+# the web service + Postgres database below in one go. See ../veganverse-infra/DEPLOY.md
+# for the full walkthrough and which env vars need real values filled in afterwards.
+databases:
+  - name: veganfit-db
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: veganfit-backend
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci && npm run prisma:generate && npm run build
+    startCommand: npx prisma migrate deploy && npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: veganfit-db
+          property: connectionString
+      # Everything below needs a real value set in the Render dashboard —
+      # `sync: false` means Render won't auto-fill it, you paste it in once.
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: AUTH_FROM_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_URL
+        sync: false
+      - key: INTERNAL_SECRET
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
