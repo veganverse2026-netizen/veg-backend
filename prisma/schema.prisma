@@ -2,6 +2,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Plain TS interfaces (no @prisma/client runtime needed) — the canonical
+// source of truth for model shapes, meant to be copied into the frontend
+// and mobile repos whenever the schema changes. See prisma/generated/README.md.
+generator typescriptInterfaces {
+  provider = "prisma-generator-typescript-interfaces"
+  output   = "./generated/types.ts"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

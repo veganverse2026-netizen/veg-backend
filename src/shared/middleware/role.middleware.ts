@@ -3,9 +3,10 @@ import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../errors/http-error.js";
 import type { AuthedRequest } from "./auth.middleware.js";
 
-// Generic role guard for use after `requireUser` — `requireAdmin` predates
-// this and has its own bearer-extraction fallback; this one assumes
-// `requireUser` already ran and set `req.userId`/`req.userRole`.
+// Generic role guard for use after `requireUser` — assumes `requireUser`
+// already ran and set `req.userId`/`req.userRole`. `requireAdmin` is built
+// on top of this (requireRole("ADMIN")) plus its own requireUser fallback
+// for routes that use it standalone.
 export function requireRole(role: string) {
   return async function (req: AuthedRequest, _res: Response, next: NextFunction): Promise<void> {
     try {
