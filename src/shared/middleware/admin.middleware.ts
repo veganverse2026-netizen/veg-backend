@@ -1,46 +1,23 @@
 import type { Response, NextFunction } from "express";
-import { prisma } from "../../infrastructure/db/prisma.js";
 import { HttpError } from "../errors/http-error.js";
 import type { AuthedRequest } from "./auth.middleware.js";
-import { verifyAccessToken } from "../utils/jwt.js";
+import { requireUser } from "./auth.middleware.js";
+import { requireRole } from "./role.middleware.js";
 
-function extractBearer(req: AuthedRequest): string | null {
-  const auth = req.header("authorization") ?? "";
-  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
-  return null;
-}
+const requireAdminRole = requireRole("ADMIN");
 
-export async function requireAdmin(req: AuthedRequest, _res: Response, next: NextFunction): Promise<void> {
-  try {
-    // If requireUser hasn't run yet, extract and verify the token ourselves
-    if (!req.userId) {
-      const bearer = extractBearer(req);
-      if (!bearer) return next(new HttpError(401, "Unauthorized"));
-      try {
-        const payload = verifyAccessToken(bearer);
-        req.userId = payload.sub;
-        req.userRole = payload.role;
-      } catch {
-        return next(new HttpError(401, "Unauthorized"));
-      }
-    }
-
-    // Fast path: role already in JWT
-    if (req.userRole === "ADMIN") return next();
-
-    // Fallback: check DB (for tokens issued before role was added to JWT)
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { role: true }
-    });
-
-    if (!user || user.role !== "ADMIN") {
-      return next(new HttpError(403, "Admin access required"));
-    }
-
-    req.userRole = "ADMIN";
-    return next();
-  } catch (err) {
-    return next(err instanceof Error ? err : new Error(String(err)));
+// Composes requireUser + requireRole("ADMIN") so there's a single JWT
+// verification/role-check implementation. Kept as its own export (rather than
+// requiring every route to spell out `requireUser, requireRole("ADMIN")`)
+// since it's also used standalone, without requireUser preceding it.
+export function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction): void {
+  if (req.userId) {
+    void requireAdminRole(req, res, next);
+    return;
   }
+
+  requireUser(req, res, (err?: unknown) => {
+    if (err) return next(err instanceof Error ? err : new HttpError(401, "Unauthorized"));
+    void requireAdminRole(req, res, next);
+  });
 }
