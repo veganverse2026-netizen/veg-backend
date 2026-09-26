@@ -1,0 +1,30 @@
+name: Enforce branch flow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR source branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          declare -A ALLOWED=(
+            [staging]="dev"
+            [uat]="staging"
+            [main]="uat"
+          )
+          expected="${ALLOWED[$BASE_REF]}"
+          if [ -z "$expected" ]; then
+            echo "No source-branch restriction for base branch '$BASE_REF'."
+            exit 0
+          fi
+          if [ "$HEAD_REF" != "$expected" ]; then
+            echo "PRs into '$BASE_REF' must come from '$expected', not '$HEAD_REF'."
+            exit 1
+          fi
+          echo "OK: '$HEAD_REF' -> '$BASE_REF' is an allowed promotion."
