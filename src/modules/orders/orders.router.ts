@@ -2,6 +2,7 @@ import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { requireAdmin } from "../../shared/middleware/admin.middleware.js";
+import { safeEqualString } from "../../shared/utils/crypto.js";
 import {
   adminGetOrder,
   adminListOrders,
@@ -47,7 +48,7 @@ ordersRouter.post("/orders/me/:id/cancel", requireUser, async (req: AuthedReques
 ordersRouter.post("/orders/internal/from-stripe", async (req, res) => {
   try {
     const secret = req.header("x-internal-secret");
-    if (!secret || secret !== process.env.INTERNAL_SECRET) {
+    if (!secret || !process.env.INTERNAL_SECRET || !safeEqualString(secret, process.env.INTERNAL_SECRET)) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     const body = req.body as {
