@@ -29,6 +29,11 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
+      # Render free plan blocks outbound SMTP — send OTP email via Brevo's HTTPS API instead.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

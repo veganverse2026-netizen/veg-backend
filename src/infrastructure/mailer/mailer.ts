@@ -38,7 +38,42 @@ function htmlFor(purpose: OtpEmailPayload["purpose"], code: string) {
   `;
 }
 
+// Brevo transactional email over HTTPS. Used when BREVO_API_KEY is set — e.g.
+// on Render's free plan, which blocks outbound SMTP ports (25/465/587).
+// The sender address must be verified in Brevo (Senders & IPs → Senders).
+async function sendViaBrevo(apiKey: string, to: string, subject: string, html: string) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER;
+  if (!senderEmail) {
+    throw new Error("BREVO_API_KEY is set but no sender: set BREVO_SENDER_EMAIL to a Brevo-verified address");
+  }
+  const senderName = process.env.BREVO_SENDER_NAME || "VeganFit";
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      sender: { email: senderEmail, name: senderName },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
+    }),
+    signal: AbortSignal.timeout(15_000)
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Brevo send failed: HTTP ${res.status} ${detail.slice(0, 300)}`);
+  }
+  const data = (await res.json().catch(() => ({}))) as { messageId?: string };
+  return { sent: true, messageId: data.messageId };
+}
+
 export async function sendOtpEmail({ to, code, purpose }: OtpEmailPayload) {
+  const brevoKey = process.env.BREVO_API_KEY;
+  if (brevoKey) {
+    return sendViaBrevo(brevoKey, to, subjectFor(purpose), htmlFor(purpose, code));
+  }
+
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
   const smtpUser = process.env.SMTP_USER;
