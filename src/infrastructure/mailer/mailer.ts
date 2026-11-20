@@ -1,3 +1,4 @@
+import { promises as dns } from "node:dns";
 import nodemailer from "nodemailer";
 
 type OtpEmailPayload = {
@@ -59,11 +60,27 @@ export async function sendOtpEmail({ to, code, purpose }: OtpEmailPayload) {
     return { sent: false, reason: "OTP logged to server console (dev mode). Configure SMTP_* to send emails." };
   }
 
+  // Some hosts (e.g. Render) have no outbound IPv6. smtp.gmail.com resolves to
+  // IPv6 too, and connecting there fails with ENETUNREACH after a long hang.
+  // Resolve an IPv4 address ourselves and keep the real hostname for TLS SNI /
+  // certificate verification.
+  let connectHost = smtpHost;
+  try {
+    connectHost = (await dns.lookup(smtpHost, { family: 4 })).address;
+  } catch {
+    // fall back to the hostname and let nodemailer resolve it
+  }
+
   const transporter = nodemailer.createTransport({
-    host: smtpHost,
+    host: connectHost,
     port: smtpPort,
     secure: smtpSecure,
-    auth: { user: smtpUser, pass: smtpPass }
+    auth: { user: smtpUser, pass: smtpPass },
+    tls: { servername: smtpHost },
+    // Fail fast instead of hanging the signup request for minutes.
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000
   });
 
   const info = await transporter.sendMail({
