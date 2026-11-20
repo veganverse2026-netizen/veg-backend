@@ -12,7 +12,9 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm ci && npm run prisma:generate && npm run build
+    # --include=dev: NODE_ENV=production would otherwise make npm ci skip the
+    # build-time tools (typescript, @types/*, prisma CLI) and tsc fails.
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
     startCommand: npx prisma migrate deploy && npm run start
     envVars:
       - key: NODE_VERSION
