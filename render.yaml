@@ -10,7 +10,7 @@ services:
   - type: web
     name: veganfit-backend
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     buildCommand: npm ci && npm run prisma:generate && npm run build
     startCommand: npx prisma migrate deploy && npm run start
