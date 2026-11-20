@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { jsonError } from "../../shared/http/json-response.js";
-import { requireUser } from "../../shared/middleware/auth.middleware.js";
+import { optionalUser, requireUser } from "../../shared/middleware/auth.middleware.js";
 import { requireAdmin } from "../../shared/middleware/admin.middleware.js";
 import {
   getCategories,
@@ -20,7 +20,7 @@ import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 export const productsRouter = Router();
 
 // ─── Public product routes ──────────────────────────────────────────────────
-productsRouter.get("/products", async (req, res) => {
+productsRouter.get("/products", optionalUser, async (req, res) => {
   try { await getProducts(req, res); } catch (err) { return jsonError(res, err); }
 });
 
@@ -28,7 +28,7 @@ productsRouter.get("/products/categories", async (req, res) => {
   try { await getCategories(req, res); } catch (err) { return jsonError(res, err); }
 });
 
-productsRouter.get("/products/by-id/:id", async (req, res) => {
+productsRouter.get("/products/by-id/:id", optionalUser, async (req, res) => {
   try { await getProductByIdRoute(req, res); } catch (err) { return jsonError(res, err); }
 });
 
@@ -36,7 +36,7 @@ productsRouter.get("/products/my-bundles", requireUser, async (req: AuthedReques
   try { await getMyBundles(req, res); } catch (err) { return jsonError(res, err); }
 });
 
-productsRouter.get("/products/:slug", async (req, res) => {
+productsRouter.get("/products/:slug", optionalUser, async (req, res) => {
   try { await getProduct(req, res); } catch (err) { return jsonError(res, err); }
 });
 

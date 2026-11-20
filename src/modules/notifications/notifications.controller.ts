@@ -17,7 +17,7 @@ const VALID_TYPES = ["ORDER_UPDATE", "COMMUNITY", "GYM", "MEAL", "SYSTEM"] as co
 
 export async function getMyNotifications(req: AuthedRequest, res: Response) {
   const unreadOnly = req.query.unreadOnly === "true";
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
   const data = await listMyNotifications(req.userId!, { limit, unreadOnly });
   return jsonOk(res, data);
 }
@@ -64,8 +64,8 @@ export async function adminBroadcast(req: AuthedRequest, res: Response) {
 }
 
 export async function adminGetNotifications(req: AuthedRequest, res: Response) {
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 50);
   const data = await adminListNotifications({ page, limit });
   return jsonOk(res, data);
 }

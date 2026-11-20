@@ -47,10 +47,10 @@ authRouter.post("/auth/credentials/authorize", loginLimiter, asyncHandler(postCr
 authRouter.post("/auth/login/password", loginLimiter, asyncHandler(postLoginPassword));
 
 // Google login: client sends ID token, backend verifies, returns JWT
-authRouter.post("/auth/login/google", asyncHandler(postLoginGoogle));
+authRouter.post("/auth/login/google", loginLimiter, asyncHandler(postLoginGoogle));
 
 // Token refresh: client sends current valid token, gets a fresh one back
-authRouter.post("/auth/refresh", asyncHandler(postRefreshToken));
+authRouter.post("/auth/refresh", loginLimiter, asyncHandler(postRefreshToken));
 
 // Logout: client clears its own token; server just acknowledges
 authRouter.post("/auth/logout", asyncHandler(postLogout));

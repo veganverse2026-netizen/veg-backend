@@ -29,8 +29,8 @@ export async function getMyTrainerChangeRequestRoute(req: AuthedRequest, res: Re
 }
 
 export async function getTrainerChangeRequestsForAdmin(req: AuthedRequest, res: Response) {
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const result = await listTrainerChangeRequestsForAdmin({ page, limit, status });
   return jsonOk(res, result);

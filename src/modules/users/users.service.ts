@@ -129,9 +129,15 @@ export async function updateUserProfile(
 ) {
   const existing = await prisma.user.findUnique({
     where: { id: userId },
-    select: { goal: true, goalLocked: true }
+    select: { goal: true, goalLocked: true, email: true }
   });
   if (!existing) throw new HttpError(404, "User not found");
+
+  // Changing email here would skip ownership verification of the new address
+  // (pre-account-takeover risk). Re-sending the current email is a no-op.
+  if (input.email != null && input.email.toLowerCase() !== (existing.email ?? "").toLowerCase()) {
+    throw new HttpError(400, "Email changes are not supported yet — contact support");
+  }
 
   if (input.goal !== undefined) {
     if (existing.goalLocked && input.goal !== existing.goal) {
@@ -147,7 +153,6 @@ export async function updateUserProfile(
       where: { id: userId },
       data: {
         name: input.name ?? undefined,
-        email: input.email ?? undefined,
         image: input.image ?? undefined,
         heightCm: input.heightCm === undefined ? undefined : input.heightCm,
         weightKg: input.weightKg === undefined ? undefined : input.weightKg,
@@ -275,8 +280,7 @@ export async function searchUsers(searchText: string, limit = 10) {
   return await prisma.user.findMany({
     where: {
       OR: [
-        { name: { contains: normalizedSearchText, mode: "insensitive" } },
-        { email: { contains: normalizedSearchText, mode: "insensitive" } }
+        { name: { contains: normalizedSearchText, mode: "insensitive" } }
       ]
     },
     orderBy: { updatedAt: "desc" },
@@ -284,7 +288,6 @@ export async function searchUsers(searchText: string, limit = 10) {
     select: {
       id: true,
       name: true,
-      email: true,
       image: true
     }
   });

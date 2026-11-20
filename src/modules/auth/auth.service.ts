@@ -15,6 +15,19 @@ function hashProofToken(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+const MAX_OTP_ATTEMPTS = 5;
+
+// Atomically reserve one verification attempt. Concurrent requests can't all
+// slip past a read-then-check, because the increment only applies while
+// attempts is still below the cap.
+async function consumeOtpAttempt(challengeId: string) {
+  const { count } = await prisma.otpChallenge.updateMany({
+    where: { id: challengeId, attempts: { lt: MAX_OTP_ATTEMPTS } },
+    data: { attempts: { increment: 1 } }
+  });
+  if (count === 0) throw new HttpError(429, "Too many attempts. Request new OTP.");
+}
+
 export async function healthCheck() {
   await prisma.$queryRaw`SELECT 1`;
 }
@@ -40,7 +53,7 @@ export async function signupRequestOtp(input: { name: string; email: string; pas
 
   const emailResult = await sendOtpEmail({ to: email, code, purpose: "SIGNUP" });
   const response: Record<string, unknown> = { success: true, emailSent: emailResult.sent, message: emailResult.reason ?? null };
-  if (!emailResult.sent && process.env.NODE_ENV !== "production") response.devOtp = code;
+  if (!emailResult.sent && process.env.NODE_ENV === "development") response.devOtp = code;
   return response;
 }
 
@@ -53,13 +66,10 @@ export async function signupVerifyOtp(input: { email: string; otp: string; refer
   });
 
   if (!challenge) throw new HttpError(400, "OTP expired or invalid");
-  if (challenge.attempts >= 5) throw new HttpError(429, "Too many attempts. Request new OTP.");
+  await consumeOtpAttempt(challenge.id);
 
   const valid = safeEqualHash(challenge.codeHash, hashOtpCode(input.otp));
-  if (!valid) {
-    await prisma.otpChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
-    throw new HttpError(400, "Incorrect OTP");
-  }
+  if (!valid) throw new HttpError(400, "Incorrect OTP");
 
   if (!challenge.passwordHash) throw new HttpError(400, "Signup challenge incomplete");
 
@@ -121,7 +131,7 @@ export async function loginRequestOtp(input: { email: string; password: string }
 
   const emailResult = await sendOtpEmail({ to: email, code, purpose: "LOGIN" });
   const response: Record<string, unknown> = { success: true, emailSent: emailResult.sent, message: emailResult.reason ?? null };
-  if (!emailResult.sent && process.env.NODE_ENV !== "production") response.devOtp = code;
+  if (!emailResult.sent && process.env.NODE_ENV === "development") response.devOtp = code;
   return response;
 }
 
@@ -134,13 +144,10 @@ export async function loginVerifyOtp(input: { email: string; otp: string }) {
   });
 
   if (!challenge) throw new HttpError(400, "OTP expired or invalid");
-  if (challenge.attempts >= 5) throw new HttpError(429, "Too many attempts. Request new OTP.");
+  await consumeOtpAttempt(challenge.id);
 
   const valid = safeEqualHash(challenge.codeHash, hashOtpCode(input.otp));
-  if (!valid) {
-    await prisma.otpChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
-    throw new HttpError(400, "Incorrect OTP");
-  }
+  if (!valid) throw new HttpError(400, "Incorrect OTP");
 
   await prisma.otpChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
 
@@ -168,7 +175,7 @@ export async function forgotRequestOtp(input: { email: string }) {
 
   const emailResult = await sendOtpEmail({ to: email, code, purpose: "RESET" });
   const response: Record<string, unknown> = { success: true, emailSent: emailResult.sent, message: emailResult.reason ?? null };
-  if (!emailResult.sent && process.env.NODE_ENV !== "production") response.devOtp = code;
+  if (!emailResult.sent && process.env.NODE_ENV === "development") response.devOtp = code;
   return response;
 }
 
@@ -181,13 +188,10 @@ export async function forgotReset(input: { email: string; otp: string; password:
   });
 
   if (!challenge) throw new HttpError(400, "OTP expired or invalid");
-  if (challenge.attempts >= 5) throw new HttpError(429, "Too many attempts. Request new OTP.");
+  await consumeOtpAttempt(challenge.id);
 
   const valid = safeEqualHash(challenge.codeHash, hashOtpCode(input.otp));
-  if (!valid) {
-    await prisma.otpChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
-    throw new HttpError(400, "Incorrect OTP");
-  }
+  if (!valid) throw new HttpError(400, "Incorrect OTP");
 
   const passwordHash = await hash(input.password, 10);
   await prisma.user.update({ where: { email }, data: { passwordHash } });
@@ -276,12 +280,16 @@ export async function refreshToken(input: { token: string }) {
 }
 
 export async function loginGoogle(input: { idToken: string }) {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  if (!googleClientId) throw new HttpError(503, "Google sign-in is not configured");
+
   const ticket = await googleClient.verifyIdToken({
     idToken: input.idToken,
-    audience: process.env.GOOGLE_CLIENT_ID
+    audience: googleClientId
   });
 
   const g = ticket.getPayload();
+  if (g?.email_verified !== true) throw new HttpError(401, "Google account email is not verified");
   const email = g?.email?.toLowerCase().trim() ?? null;
   if (!email) throw new HttpError(400, "Google account has no email");
 

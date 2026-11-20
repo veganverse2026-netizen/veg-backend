@@ -4,10 +4,12 @@ import helmet from "helmet";
 import { apiRouter } from "./routes/index.js";
 import { jsonError } from "./shared/http/json-response.js";
 import { HttpError } from "./shared/errors/http-error.js";
+import { generalApiLimiter } from "./shared/middleware/rate-limit.middleware.js";
+
+const DEV_ORIGINS = process.env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://localhost:3001"] : [];
 
 const ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:3001",
+  ...DEV_ORIGINS,
   process.env.FRONTEND_URL,
   process.env.ADMIN_URL,
 ].filter(Boolean) as string[];
@@ -35,7 +37,7 @@ export function createApp() {
 
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
-  app.use("/api", apiRouter);
+  app.use("/api", generalApiLimiter, apiRouter);
 
   app.use((_req, _res, next) => next(new HttpError(404, "Not found")));
 

@@ -33,3 +33,26 @@ export const aiChatLimiter = rateLimit({
   },
   message: { error: "Too many AI assistant requests, please try again later" }
 });
+
+// Blanket per-IP ceiling for every /api route — generous enough that normal
+// use never hits it; the specific limiters above still apply on top.
+export const generalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" }
+});
+
+// Signed-upload requests — throttle per-user (falling back to per-IP).
+export const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    return userId ?? ipKeyGenerator(req.ip ?? "");
+  },
+  message: { error: "Too many upload requests, please try again later" }
+});

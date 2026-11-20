@@ -129,7 +129,7 @@ export async function listProducts(opts: {
   return { products, total, page, limit, pages: Math.ceil(total / limit) };
 }
 
-export async function getProductBySlug(slug: string) {
+export async function getProductBySlug(slug: string, opts: { includeInactive?: boolean } = {}) {
   const product = await prisma.product.findUnique({
     where: { slug },
     include: {
@@ -141,16 +141,16 @@ export async function getProductBySlug(slug: string) {
       },
     },
   });
-  if (!product) throw new HttpError(404, "Product not found");
+  if (!product || (!opts.includeInactive && product.status !== "ACTIVE")) throw new HttpError(404, "Product not found");
   return product;
 }
 
-export async function getProductById(id: string) {
+export async function getProductById(id: string, opts: { includeInactive?: boolean } = {}) {
   const product = await prisma.product.findUnique({
     where: { id },
     include: { category: { select: { id: true, name: true, slug: true } } },
   });
-  if (!product) throw new HttpError(404, "Product not found");
+  if (!product || (!opts.includeInactive && product.status !== "ACTIVE")) throw new HttpError(404, "Product not found");
   return product;
 }
 

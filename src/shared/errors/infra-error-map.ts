@@ -18,7 +18,7 @@ export function mapInfrastructureError(err: unknown): { status: number; message:
     return {
       status: 503,
       message:
-        process.env.NODE_ENV === "production"
+        process.env.NODE_ENV !== "development"
           ? "Service temporarily unavailable. Please try again shortly."
           : "Database is unavailable. If you use Neon: open the Neon dashboard and resume/wake the project, confirm DATABASE_URL in backend .env matches the active branch, then restart the API server (npm run dev in backend-nodejs)."
     };

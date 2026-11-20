@@ -3,6 +3,7 @@ import type { AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { jsonOk } from "../../shared/http/json-response.js";
 import { requireObject, requireString } from "../../shared/validation/validators.js";
 import { HttpError } from "../../shared/errors/http-error.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
 
 const PRODUCT_STATUSES = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
 
@@ -25,8 +26,18 @@ import {
 } from "./products.service.js";
 import { listMyRecommendedBundles } from "../gym/gym-member-extras.service.js";
 
-export async function getProductByIdRoute(req: Request, res: Response) {
-  const result = await getProductById(req.params.id);
+// Non-admin callers (storefront, anonymous) only ever see ACTIVE products.
+// Role comes from the optional JWT; fall back to the DB for older tokens
+// issued before role was embedded (same rule as requireAdmin).
+async function isAdminCaller(req: AuthedRequest): Promise<boolean> {
+  if (!req.userId) return false;
+  if (req.userRole === "ADMIN") return true;
+  const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } });
+  return user?.role === "ADMIN";
+}
+
+export async function getProductByIdRoute(req: AuthedRequest, res: Response) {
+  const result = await getProductById(req.params.id, { includeInactive: await isAdminCaller(req) });
   return jsonOk(res, result);
 }
 
@@ -37,21 +48,23 @@ export async function getMyBundles(req: AuthedRequest, res: Response) {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 
-export async function getProducts(req: Request, res: Response) {
+export async function getProducts(req: AuthedRequest, res: Response) {
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   const category = typeof req.query.category === "string" ? req.query.category : undefined;
   const featured = req.query.featured === "true" ? true : undefined;
-  const status = typeof req.query.status === "string" ? req.query.status : undefined;
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+  const requestedStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+  // Only admins may filter by a non-ACTIVE status; everyone else gets ACTIVE.
+  const status = requestedStatus && requestedStatus !== "ACTIVE" && (await isAdminCaller(req)) ? requestedStatus : undefined;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
   const sortBy = typeof req.query.sortBy === "string" ? req.query.sortBy : undefined;
   const result = await listProducts({ categorySlug: category, status, featured, page, limit, q, sortBy });
   return jsonOk(res, result);
 }
 
-export async function getProduct(req: Request, res: Response) {
+export async function getProduct(req: AuthedRequest, res: Response) {
   const slug = req.params.slug;
-  const result = await getProductBySlug(slug);
+  const result = await getProductBySlug(slug, { includeInactive: await isAdminCaller(req) });
   return jsonOk(res, result);
 }
 

@@ -8,8 +8,8 @@ import type { ReportStatus } from "@prisma/client";
 const VALID_STATUSES: ReportStatus[] = ["PENDING", "RESOLVED", "DISMISSED"];
 
 export async function adminGetPosts(req: AuthedRequest, res: Response) {
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   return jsonOk(res, await adminListPosts({ page, limit, q }));
 }
@@ -21,8 +21,8 @@ export async function adminDeletePost(req: AuthedRequest, res: Response) {
 }
 
 export async function adminGetReports(req: AuthedRequest, res: Response) {
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
   const statusRaw = typeof req.query.status === "string" ? req.query.status.toUpperCase() as ReportStatus : undefined;
   const status = statusRaw && VALID_STATUSES.includes(statusRaw) ? statusRaw : undefined;
   return jsonOk(res, await adminListReports({ page, limit, status }));

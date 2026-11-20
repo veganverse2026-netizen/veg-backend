@@ -13,7 +13,11 @@ export async function listGymTrainers() {
       title: true,
       bio: true,
       imageUrl: true,
-      sortOrder: true
+      sortOrder: true,
+      // Admin-reviewed profile facts, shown on the public coach cards instead
+      // of hard-coded placeholder credentials.
+      certifications: true,
+      yearsExperience: true
     }
   });
 }

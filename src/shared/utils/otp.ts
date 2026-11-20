@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 export function generateOtpCode() {
-	return String(crypto.randomInt(100000, 500000));
+	return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
 export function hashOtpCode(code: string) {

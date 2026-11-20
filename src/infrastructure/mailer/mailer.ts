@@ -86,7 +86,7 @@ export async function sendOtpEmail({ to, code, purpose }: OtpEmailPayload) {
   const html = htmlFor(purpose, code);
 
   if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV !== "development") {
       throw new Error("SMTP is not configured. Required: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS");
     }
 

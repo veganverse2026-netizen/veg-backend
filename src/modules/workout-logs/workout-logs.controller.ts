@@ -26,8 +26,8 @@ export async function getWorkoutLogs(req: AuthedRequest, res: Response) {
 }
 
 export async function getPersonalRecordsPaginated(req: AuthedRequest, res: Response) {
-  const page = req.query.page ? parseInt(req.query.page as string) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+  const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 10);
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   const result = await listPersonalRecordsPaginated(req.userId!, page, limit, q);
   return jsonOk(res, result);

@@ -3,6 +3,9 @@ import crypto from "crypto";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { requireObject, optionalString } from "../../shared/validation/validators.js";
+import { uploadLimiter } from "../../shared/middleware/rate-limit.middleware.js";
+import { prisma } from "../../infrastructure/db/prisma.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 
 export const uploadsRouter = Router();
 
@@ -25,10 +28,16 @@ function signCloudinary(params: Record<string, string>, apiSecret: string) {
   return crypto.createHash("sha1").update(`${toSign}${apiSecret}`).digest("hex");
 }
 
-uploadsRouter.post("/uploads/sign", requireUser, async (req: AuthedRequest, res) => {
+uploadsRouter.post("/uploads/sign", requireUser, uploadLimiter, async (req: AuthedRequest, res) => {
   try {
     const body = requireObject(req.body);
     const purpose = (optionalString(body, "purpose", { trim: true, max: 40 }) ?? "post").toLowerCase();
+
+    // Product images go into the storefront catalog folder — admins only.
+    if (purpose === "product" && req.userRole !== "ADMIN") {
+      const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
+      if (user?.role !== "ADMIN") throw new HttpError(403, "Admin access required");
+    }
 
     const { cloudName, apiKey, apiSecret } = cloudinaryConfig();
     const timestamp = Math.floor(Date.now() / 1000).toString();

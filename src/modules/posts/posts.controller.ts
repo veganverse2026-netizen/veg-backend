@@ -21,7 +21,7 @@ import {
 } from "./posts.service.js";
 
 export async function getPostsFeed(req: AuthedRequest, res: Response) {
-  const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+  const limit = (parseInt(String(req.query.limit ?? ""), 10) || 10);
   const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   const type = typeof req.query.type === "string" ? req.query.type : undefined;

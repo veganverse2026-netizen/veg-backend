@@ -17,7 +17,7 @@ export function jsonError(res: Response, err: unknown) {
     return res.status(infra.status).json({ error: infra.message });
   }
 
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development") {
     console.error(err);
     const message = err instanceof Error ? err.message : String(err);
     return res.status(500).json({ error: message });

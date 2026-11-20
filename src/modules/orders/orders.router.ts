@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Router } from "express";
 import { jsonError, jsonOk } from "../../shared/http/json-response.js";
 import { requireUser, type AuthedRequest } from "../../shared/middleware/auth.middleware.js";
@@ -43,11 +44,20 @@ ordersRouter.post("/orders/me/:id/cancel", requireUser, async (req: AuthedReques
   }
 });
 
+// Constant-time compare; rejects outright if INTERNAL_SECRET is unset/empty.
+function isValidInternalSecret(provided: string | undefined): boolean {
+  const expected = process.env.INTERNAL_SECRET;
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 // ─── Internal: create order from Stripe (called from Next.js webhook) ────────
 ordersRouter.post("/orders/internal/from-stripe", async (req, res) => {
   try {
-    const secret = req.header("x-internal-secret");
-    if (!secret || secret !== process.env.INTERNAL_SECRET) {
+    if (!isValidInternalSecret(req.header("x-internal-secret"))) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     const body = req.body as {
@@ -71,8 +81,8 @@ ordersRouter.post("/orders/internal/from-stripe", async (req, res) => {
 ordersRouter.get("/admin/orders", requireUser, requireAdmin, async (req, res) => {
   try {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const page = req.query.page ? parseInt(req.query.page as string) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+    const page = (parseInt(String(req.query.page ?? ""), 10) || 1);
+    const limit = (parseInt(String(req.query.limit ?? ""), 10) || 20);
     const result = await adminListOrders({ status, page, limit });
     return jsonOk(res, result);
   } catch (err) {

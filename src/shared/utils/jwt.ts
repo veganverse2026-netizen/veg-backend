@@ -10,11 +10,11 @@ export type JwtPayload = {
 export function signAccessToken(userId: string, role?: string) {
   const payload: JwtPayload = { sub: userId };
   if (role) payload.role = role;
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, env.JWT_SECRET, { algorithm: "HS256", expiresIn: "7d" });
 }
 
 export function verifyAccessToken(token: string): JwtPayload {
-  const decoded = jwt.verify(token, env.JWT_SECRET) as any;
+  const decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as any;
   if (!decoded?.sub) throw new HttpError(401, "Invalid token");
   return { sub: String(decoded.sub), role: decoded.role ?? undefined };
 }
