@@ -15,6 +15,12 @@ const ALLOWED_ORIGINS = [
 export function createApp() {
   const app = express();
 
+  // Behind Render's (and any single) reverse proxy: trust the first hop so
+  // req.ip is the real client IP. Without this, every request appears to come
+  // from the proxy and per-IP rate limits (e.g. 5 OTP requests / 15 min) are
+  // shared by ALL users.
+  app.set("trust proxy", 1);
+
   app.use(helmet());
   app.use(
     cors({
