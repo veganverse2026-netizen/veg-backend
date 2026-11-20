@@ -22,5 +22,8 @@ export function jsonError(res: Response, err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return res.status(500).json({ error: message });
   }
+  // Log server-side so production 500s are diagnosable in the host's logs;
+  // the client still only sees the generic message.
+  console.error(err);
   return res.status(500).json({ error: "Unexpected error" });
 }
